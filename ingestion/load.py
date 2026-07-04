@@ -5,8 +5,8 @@ re-emits an event when its mention/article counts grow, so on conflict we
 take the fresher counts and rescored intensity.
 """
 
-from sqlalchemy import Engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import Engine
 
 from common.models import events as events_table
 from common.models import metadata

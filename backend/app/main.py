@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import Engine
+from sqlalchemy.engine import Engine
 
 from backend.app.queries import fetch_events
 from backend.app.schemas import BoundingBox, FeatureCollection

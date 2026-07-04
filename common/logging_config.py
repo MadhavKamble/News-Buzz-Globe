@@ -37,12 +37,17 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    """Install the JSON formatter on the root logger. Idempotent."""
+    """Install the JSON formatter on a bare root logger. Idempotent.
+
+    If a host framework (e.g. Airflow's task runner, which redirects stdout
+    into its own logging) has already configured root handlers, leave them
+    alone — adding a stdout handler there creates an infinite log loop that
+    grows until the OOM killer intervenes.
+    """
     root = logging.getLogger()
+    if root.handlers:
+        return
     root.setLevel(level)
-    for handler in root.handlers:
-        if getattr(handler, "_news_buzz_globe", False):
-            return
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     handler._news_buzz_globe = True  # type: ignore[attr-defined]

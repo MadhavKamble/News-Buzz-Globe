@@ -2,7 +2,8 @@
 
 from datetime import datetime
 
-from sqlalchemy import Engine, func, select
+from sqlalchemy import func, select
+from sqlalchemy.engine import Engine
 
 from backend.app.schemas import (
     BoundingBox,

@@ -1,5 +1,46 @@
 name: news-buzz-globe
 
+x-airflow-common: &airflow-common
+  # apache/airflow:2.10.4, imported locally via OCI archive and retagged
+  # (docker.io is unreachable from this host's docker daemon — see docs).
+  # On hosts with working registry access, plain apache/airflow:2.10.4 is fine.
+  image: ${AIRFLOW_IMAGE:-nbg/airflow:2.10.4}
+  pull_policy: never
+  # Host networking: outbound HTTP from bridge-NAT'd containers is broken on
+  # this dev host (inbound payloads dropped after handshake), and the DAG
+  # must download GDELT exports. Works equally well on a single-VM deploy;
+  # Postgres is reached via its published localhost:5432 port.
+  network_mode: host
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+      postgresql+psycopg2://${POSTGRES_USER:-nbg}:${POSTGRES_PASSWORD:-nbg_dev_password}@localhost:${POSTGRES_PORT:-5432}/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: utc
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "30"
+    # Spawn a fresh interpreter per task instead of forking the multi-threaded
+    # scheduler (fork caused runaway memory / OOM-killed tasks here).
+    AIRFLOW__CORE__EXECUTE_TASKS_NEW_PYTHON_INTERPRETER: "True"
+    # Ingestion tasks import the repo from the /opt/newsbuzz mount.
+    PYTHONPATH: /opt/newsbuzz
+    DATABASE_URL: >-
+      postgresql+psycopg2://${POSTGRES_USER:-nbg}:${POSTGRES_PASSWORD:-nbg_dev_password}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-newsbuzz}
+    # Only dependency the stock Airflow image lacks for our ingestion code.
+    _PIP_ADDITIONAL_REQUIREMENTS: "GeoAlchemy2==0.15.2"
+    # Outbound proxy passthrough (needed on proxied networks, e.g. campus /
+    # corporate; empty and harmless elsewhere). Postgres stays direct.
+    HTTP_PROXY: ${HTTP_PROXY:-}
+    HTTPS_PROXY: ${HTTPS_PROXY:-}
+    http_proxy: ${http_proxy:-}
+    https_proxy: ${https_proxy:-}
+    NO_PROXY: localhost,127.0.0.1,postgres
+    no_proxy: localhost,127.0.0.1,postgres
+  volumes:
+    - ..:/opt/newsbuzz:ro
+    - ./airflow/dags:/opt/airflow/dags:ro
+    - airflow-data:/opt/airflow/data
+    - airflow-logs:/opt/airflow/logs
+
 services:
   postgres:
     # GHCR mirror of postgis/postgis (docker.io can be unreachable on
@@ -22,5 +63,44 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # ---- Airflow (Phase 4) — start with: docker compose --profile airflow up -d
+  airflow-init:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    entrypoint: /bin/bash
+    user: "0:0"  # root once, to own the named volumes for uid 50000 (airflow)
+    command:
+      - -c
+      - |
+        chown -R 50000:0 /opt/airflow/data /opt/airflow/logs && \
+        su airflow -c "airflow db migrate && \
+          airflow users create --username admin --password admin \
+            --firstname Admin --lastname User --role Admin --email admin@example.com"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-scheduler:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    container_name: nbg-airflow-scheduler
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-webserver:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    container_name: nbg-airflow-webserver
+    command: webserver  # binds 8080 directly on the host (host networking)
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
+  airflow-data:
+  airflow-logs:
