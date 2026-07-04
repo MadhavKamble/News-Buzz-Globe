@@ -33,6 +33,10 @@ extend-exclude = ["frontend", "infra"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's declarative defaults are the framework idiom, not a B008 bug.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
