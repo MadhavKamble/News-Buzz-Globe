@@ -26,3 +26,6 @@ cd "${REPO_DIR}"
   --project-dir "${REPO_DIR}/dbt" \
   --profiles-dir "${REPO_DIR}/dbt/profiles" \
   >> "${LOG_DIR}/dbt.log" 2>&1
+
+# Phase 8+: cluster duplicate events into stories, label via local Ollama.
+"${REPO_DIR}/.venv/bin/python" -m intelligence.job >> "${LOG_DIR}/intelligence.log" 2>&1

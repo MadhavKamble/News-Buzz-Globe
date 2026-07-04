@@ -12,8 +12,12 @@ from backend.app.schemas import (
     Feature,
     FeatureCollection,
     PointGeometry,
+    StoryCollection,
+    StoryFeature,
+    StoryProperties,
 )
 from common.models import events_scored as events
+from common.models import story_clusters
 from ingestion.config import IntensityConfig  # single source of formula params
 
 
@@ -99,3 +103,39 @@ def fetch_events(
                 )
             )
     return FeatureCollection(features=features)
+
+
+def fetch_stories(engine: Engine, limit: int = 500) -> StoryCollection:
+    """Latest clustering run's story hotspots, highest intensity first."""
+    latest_run = select(func.max(story_clusters.c.run_at)).scalar_subquery()
+    stmt = (
+        select(story_clusters)
+        .where(story_clusters.c.run_at == latest_run)
+        .order_by(story_clusters.c.intensity.desc())
+        .limit(limit)
+    )
+    features: list[StoryFeature] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt).mappings():
+            features.append(
+                StoryFeature(
+                    geometry=PointGeometry(coordinates=(row["lon"], row["lat"])),
+                    properties=StoryProperties(
+                        id=row["id"],
+                        summary=row["summary"],
+                        member_count=row["member_count"],
+                        total_articles=row["total_articles"],
+                        total_sources=row["total_sources"],
+                        intensity=min(1.0, row["intensity"]),
+                        avg_tone=row["avg_tone"],
+                        location=row["location"],
+                        country_code=row["country_code"],
+                        source_urls=row["source_urls"] or [],
+                        event_ids=row["event_ids"] or [],
+                        earliest=row["earliest"],
+                        latest=row["latest"],
+                        run_at=row["run_at"],
+                    ),
+                )
+            )
+    return StoryCollection(features=features)

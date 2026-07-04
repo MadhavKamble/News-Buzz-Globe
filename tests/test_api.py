@@ -56,6 +56,61 @@ def _fixture_row(event_id, lat, lon, root_code, date_added, intensity, title):
     }
 
 
+STORY_FIXTURES = [
+    {
+        "run_at": T1,
+        "summary": "Mumbai floods intensify as red alert issued",
+        "lat": 19.07,
+        "lon": 72.87,
+        "member_count": 3,
+        "total_articles": 60,
+        "total_sources": 9,
+        "intensity": 0.8,
+        "avg_tone": -4.2,
+        "event_ids": [11, 12, 13],
+        "source_urls": ["https://example.com/a", "https://example.com/b"],
+        "location": "Mumbai, India",
+        "country_code": "IN",
+        "earliest": T0,
+        "latest": T1,
+    },
+    {
+        "run_at": T1,
+        "summary": "EU summit reaches trade agreement",
+        "lat": 50.85,
+        "lon": 4.35,
+        "member_count": 1,
+        "total_articles": 8,
+        "total_sources": 3,
+        "intensity": 0.4,
+        "avg_tone": 2.1,
+        "event_ids": [14],
+        "source_urls": ["https://example.com/c"],
+        "location": "Brussels, Belgium",
+        "country_code": "BE",
+        "earliest": T1,
+        "latest": T1,
+    },
+    {  # stale run — must not be returned
+        "run_at": T0,
+        "summary": "Old story from a previous run",
+        "lat": 0.0,
+        "lon": 10.0,
+        "member_count": 2,
+        "total_articles": 5,
+        "total_sources": 2,
+        "intensity": 0.9,
+        "avg_tone": 0.0,
+        "event_ids": [1, 2],
+        "source_urls": [],
+        "location": None,
+        "country_code": None,
+        "earliest": T0,
+        "latest": T0,
+    },
+]
+
+
 @pytest.fixture(scope="module")
 def test_engine():
     admin = create_engine(ADMIN_URL, isolation_level="AUTOCOMMIT")
@@ -71,9 +126,12 @@ def test_engine():
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
     metadata.create_all(engine)
     from common.models import events_scored as events
+    from common.models import stories_metadata, story_clusters
 
+    stories_metadata.create_all(engine)
     with engine.begin() as conn:
         conn.execute(events.insert(), [_fixture_row(*f) for f in FIXTURES])
+        conn.execute(story_clusters.insert(), STORY_FIXTURES)
     yield engine
     engine.dispose()
     with admin.connect() as conn:
@@ -165,6 +223,30 @@ class TestThemes:
 
     def test_unknown_theme_rejected(self, client):
         assert client.get("/events", params={"theme": ["sports"]}).status_code == 422
+
+
+class TestStories:
+    def test_latest_run_only_as_geojson(self, client):
+        body = client.get("/stories").json()
+        assert body["type"] == "FeatureCollection"
+        summaries = [f["properties"]["summary"] for f in body["features"]]
+        assert summaries == [
+            "Mumbai floods intensify as red alert issued",
+            "EU summit reaches trade agreement",
+        ]
+        assert "Old story from a previous run" not in summaries
+
+    def test_story_properties_shape(self, client):
+        top = client.get("/stories").json()["features"][0]["properties"]
+        assert top["member_count"] == 3
+        assert top["event_ids"] == [11, 12, 13]
+        assert len(top["source_urls"]) == 2
+        assert top["location"] == "Mumbai, India"
+        assert 0.0 <= top["intensity"] <= 1.0
+
+    def test_limit(self, client):
+        body = client.get("/stories", params={"limit": 1}).json()
+        assert len(body["features"]) == 1
 
 
 class TestReferenceTimeIntensity:

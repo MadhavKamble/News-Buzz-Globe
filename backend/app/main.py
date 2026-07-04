@@ -8,8 +8,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import Engine
 
-from backend.app.queries import fetch_events
-from backend.app.schemas import BoundingBox, FeatureCollection
+from backend.app.queries import fetch_events, fetch_stories
+from backend.app.schemas import BoundingBox, FeatureCollection, StoryCollection
 from common.cameo import CAMEO_THEMES, codes_for_themes
 from common.db import get_engine
 from common.logging_config import get_logger
@@ -48,6 +48,15 @@ def health() -> dict:
 def themes() -> dict:
     """CAMEO root-code theme groupings used by the category filter."""
     return CAMEO_THEMES
+
+
+@app.get("/stories", response_model=StoryCollection)
+def get_stories(
+    limit: int = Query(500, ge=1, le=2000, description="Max stories, buzziest first."),
+    engine: Engine = Depends(engine_dep),
+) -> StoryCollection:
+    """Deduplicated story hotspots from the latest clustering run (Phase 8)."""
+    return fetch_stories(engine, limit=limit)
 
 
 @app.get("/events", response_model=FeatureCollection)

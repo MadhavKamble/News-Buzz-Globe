@@ -31,11 +31,24 @@ export default function EventPopup({ event, onClose }) {
           <dd>{event.avg_tone != null ? event.avg_tone.toFixed(1) : '–'}</dd>
         </div>
       </dl>
-      {event.source_url && (
-        <a className="popup-link" href={event.source_url} target="_blank" rel="noreferrer">
-          Read article ↗
-        </a>
+      {event.member_count > 1 && (
+        <p className="popup-merged">
+          ✦ {event.member_count} reports merged · AI-generated headline
+        </p>
       )}
+      {(event.source_urls || (event.source_url ? [event.source_url] : []))
+        .slice(0, 3)
+        .map((url, i) => (
+          <a
+            key={url}
+            className="popup-link"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Read article{i > 0 ? ` ${i + 1}` : ''} ↗
+          </a>
+        ))}
     </aside>
   );
 }

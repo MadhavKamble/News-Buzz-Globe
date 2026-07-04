@@ -22,9 +22,11 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 
 raw_metadata = MetaData()
 scored_metadata = MetaData()
+stories_metadata = MetaData()
 
 
 def _core_columns() -> list[Column]:
@@ -67,4 +69,28 @@ events_scored = Table(
     Column("geom", Geometry(geometry_type="POINT", srid=4326), nullable=False),
     Column("intensity", Float, nullable=False),
     Column("scored_at", DateTime(timezone=True), server_default=func.now()),
+)
+
+# Phase 8: deduplicated stories — clusters of events about the same real-world
+# story (embedding similarity), labeled by a locally hosted LLM summary.
+story_clusters = Table(
+    "story_clusters",
+    stories_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("summary", Text, nullable=False),
+    Column("lat", Float, nullable=False),
+    Column("lon", Float, nullable=False),
+    Column("member_count", Integer, nullable=False),
+    Column("total_articles", Integer),
+    Column("total_sources", Integer),
+    Column("intensity", Float, nullable=False),
+    Column("avg_tone", Float),
+    Column("event_ids", ARRAY(BigInteger), nullable=False),
+    Column("source_urls", ARRAY(Text)),
+    Column("location", Text),
+    Column("country_code", Text),
+    Column("earliest", DateTime(timezone=True)),
+    Column("latest", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )

@@ -59,6 +59,23 @@ class EventProperties(BaseModel):
     actor2: str | None
 
 
+class StoryProperties(BaseModel):
+    id: int
+    summary: str
+    member_count: int
+    total_articles: int | None
+    total_sources: int | None
+    intensity: float
+    avg_tone: float | None
+    location: str | None
+    country_code: str | None
+    source_urls: list[str]
+    event_ids: list[int]
+    earliest: datetime | None
+    latest: datetime | None
+    run_at: datetime
+
+
 class PointGeometry(BaseModel):
     type: Literal["Point"] = "Point"
     coordinates: tuple[float, float]  # (lon, lat)
@@ -73,3 +90,14 @@ class Feature(BaseModel):
 class FeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[Feature]
+
+
+class StoryFeature(BaseModel):
+    type: Literal["Feature"] = "Feature"
+    geometry: PointGeometry
+    properties: StoryProperties
+
+
+class StoryCollection(BaseModel):
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[StoryFeature]

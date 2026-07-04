@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["common", "ingestion", "backend", "backend.app"]
+packages = ["common", "ingestion", "backend", "backend.app", "intelligence"]
 
 [tool.ruff]
 line-length = 100

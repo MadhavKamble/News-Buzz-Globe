@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Globe from 'react-globe.gl';
-import { fetchEvents, fetchThemes } from './api';
+import { fetchEvents, fetchStories, fetchThemes } from './api';
 import { intensityColor } from './colors';
 import EventPopup from './components/EventPopup';
 import FilterPanel from './components/FilterPanel';
@@ -22,10 +22,23 @@ export default function App() {
   const [offsetSteps, setOffsetSteps] = useState(0); // 0 = live
   const [themes, setThemes] = useState({});
   const [activeThemes, setActiveThemes] = useState([]);
+  const [viewMode, setViewMode] = useState('stories'); // 'stories' | 'events'
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
-  const loadEvents = useCallback(async (steps, themeKeys) => {
+  // Stories are computed for "now" only; scrubbing history uses raw events.
+  const effectiveMode = offsetSteps === 0 ? viewMode : 'events';
+
+  const loadEvents = useCallback(async (steps, themeKeys, mode) => {
     try {
+      if (mode === 'stories') {
+        const stories = await fetchStories();
+        if (stories.length > 0) {
+          setEvents(stories);
+          setError(null);
+          return;
+        }
+        // No clustering run yet — fall back to raw events silently.
+      }
       const t = new Date(Date.now() - steps * STEP_MINUTES * 60 * 1000);
       const start = new Date(t.getTime() - WINDOW_HOURS * 60 * 60 * 1000);
       setEvents(
@@ -47,20 +60,23 @@ export default function App() {
     fetchThemes().then(setThemes).catch(() => {});
   }, []);
 
-  // Fetch on slider/filter change (debounced); poll only while live.
+  // Fetch on slider/filter/view change (debounced); poll only while live.
   useEffect(() => {
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(
-      () => loadEvents(offsetSteps, activeThemes),
+      () => loadEvents(offsetSteps, activeThemes, effectiveMode),
       SCRUB_DEBOUNCE_MS,
     );
     if (offsetSteps !== 0) return () => clearTimeout(debounceTimer.current);
-    const timer = setInterval(() => loadEvents(0, activeThemes), REFRESH_MS);
+    const timer = setInterval(
+      () => loadEvents(0, activeThemes, effectiveMode),
+      REFRESH_MS,
+    );
     return () => {
       clearTimeout(debounceTimer.current);
       clearInterval(timer);
     };
-  }, [offsetSteps, activeThemes, loadEvents]);
+  }, [offsetSteps, activeThemes, effectiveMode, loadEvents]);
 
   useEffect(() => {
     const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
@@ -134,10 +150,27 @@ export default function App() {
       <header className="banner">
         <h1>News Buzz Globe</h1>
         <p>
-          {events.length} hotspots · {offsetSteps === 0 ? 'live' : 'historical'} · GDELT,
-          updated every 15 min
+          {events.length} {effectiveMode === 'stories' ? 'stories' : 'hotspots'} ·{' '}
+          {offsetSteps === 0 ? 'live' : 'historical'} · GDELT, updated every 15 min
         </p>
       </header>
+      <div className="view-toggle">
+        <button
+          className={effectiveMode === 'stories' ? 'seg-on' : ''}
+          onClick={() => {
+            setViewMode('stories');
+            setOffsetSteps(0);
+          }}
+        >
+          Stories
+        </button>
+        <button
+          className={effectiveMode === 'events' ? 'seg-on' : ''}
+          onClick={() => setViewMode('events')}
+        >
+          Events
+        </button>
+      </div>
       {error && <div className="error-toast">API unreachable: {error}</div>}
       <div className="controls">
         <SearchBox events={events} onFlyTo={handleFlyTo} />

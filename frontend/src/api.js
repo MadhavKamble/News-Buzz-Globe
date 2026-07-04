@@ -28,3 +28,20 @@ export async function fetchThemes() {
   if (!resp.ok) throw new Error(`API error ${resp.status}`);
   return resp.json();
 }
+
+// Deduplicated story clusters (Phase 8) from the latest clustering run.
+export async function fetchStories(limit = 800) {
+  const resp = await fetch(`${API_BASE}/stories?limit=${limit}`);
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  const geojson = await resp.json();
+  return geojson.features.map((f) => ({
+    lng: f.geometry.coordinates[0],
+    lat: f.geometry.coordinates[1],
+    title: f.properties.summary,
+    num_articles: f.properties.total_articles,
+    num_sources: f.properties.total_sources,
+    date_added: f.properties.latest,
+    source_url: f.properties.source_urls[0] || null,
+    ...f.properties,
+  }));
+}
