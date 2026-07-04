@@ -4,10 +4,11 @@ import re
 from datetime import datetime
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import Engine
 
+from backend.app.cache import EventsCache, events_cache_key
 from backend.app.queries import fetch_events, fetch_stories
 from backend.app.schemas import BoundingBox, FeatureCollection, StoryCollection
 from common.cameo import CAMEO_THEMES, codes_for_themes
@@ -39,6 +40,15 @@ def engine_dep() -> Engine:
     return shared_engine()
 
 
+@lru_cache(maxsize=1)
+def shared_cache() -> EventsCache:
+    return EventsCache()
+
+
+def cache_dep() -> EventsCache:
+    return shared_cache()
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -48,6 +58,25 @@ def health() -> dict:
 def themes() -> dict:
     """CAMEO root-code theme groupings used by the category filter."""
     return CAMEO_THEMES
+
+
+@app.get("/metrics/ingestion")
+def ingestion_metrics(
+    limit: int = Query(20, ge=1, le=500),
+    engine: Engine = Depends(engine_dep),
+) -> list[dict]:
+    """Recent ingestion runs: rows fetched/rejected/loaded and duration."""
+    from sqlalchemy import select
+
+    from common.models import ingestion_runs
+
+    stmt = (
+        select(ingestion_runs)
+        .order_by(ingestion_runs.c.run_at.desc())
+        .limit(limit)
+    )
+    with engine.connect() as conn:
+        return [dict(row) for row in conn.execute(stmt).mappings()]
 
 
 @app.get("/stories", response_model=StoryCollection)
@@ -85,6 +114,8 @@ def get_events(
         ),
     ),
     engine: Engine = Depends(engine_dep),
+    cache: EventsCache = Depends(cache_dep),
+    response: Response = None,  # type: ignore[assignment]
 ) -> FeatureCollection:
     parsed_bbox = None
     if bbox is not None:
@@ -110,7 +141,17 @@ def get_events(
                 status_code=422,
                 detail=f"unknown theme {exc.args[0]!r}; see GET /themes",
             ) from exc
-    return fetch_events(
+
+    # Cache key covers every response-affecting param: bbox, time window,
+    # reference time, category/theme filters, and limit.
+    key = events_cache_key(bbox, start, end, at, category, theme, limit)
+    cached = cache.get_json(key)
+    if cached is not None:
+        if response is not None:
+            response.headers["X-Cache"] = "HIT"
+        return FeatureCollection.model_validate(cached)
+
+    result = fetch_events(
         engine,
         bbox=parsed_bbox,
         start=start,
@@ -119,3 +160,7 @@ def get_events(
         limit=limit,
         at=at,
     )
+    cache.set_json(key, result.model_dump(mode="json"))
+    if response is not None:
+        response.headers["X-Cache"] = "MISS"
+    return result

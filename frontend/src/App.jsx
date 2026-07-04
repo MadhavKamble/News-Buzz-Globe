@@ -40,7 +40,12 @@ export default function App() {
         }
         // No clustering run yet — fall back to raw events silently.
       }
-      const t = new Date(Date.now() - steps * STEP_MINUTES * 60 * 1000);
+      // Floor to the 15-min data grid: GDELT only changes on that cadence,
+      // and stable timestamps let the backend Redis cache actually hit.
+      const stepMs = STEP_MINUTES * 60 * 1000;
+      const t = new Date(
+        Math.floor((Date.now() - steps * stepMs) / stepMs) * stepMs,
+      );
       const start = new Date(t.getTime() - WINDOW_HOURS * 60 * 60 * 1000);
       setEvents(
         await fetchEvents({

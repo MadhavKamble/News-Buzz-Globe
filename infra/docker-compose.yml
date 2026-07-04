@@ -64,6 +64,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  redis:
+    # redis:7-alpine, imported locally and retagged (see airflow image note).
+    image: ${REDIS_IMAGE:-nbg/redis:7-alpine}
+    pull_policy: never
+    container_name: nbg-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # ---- Airflow (Phase 4) — start with: docker compose --profile airflow up -d
   airflow-init:
     <<: *airflow-common

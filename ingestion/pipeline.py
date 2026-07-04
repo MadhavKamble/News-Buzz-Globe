@@ -9,11 +9,13 @@ fetched, rows rejected (by reason), rows loaded, and duration.
 
 import argparse
 import time
+from datetime import UTC, datetime
 
 import requests
 
 from common.db import get_engine
 from common.logging_config import get_logger
+from common.models import ingestion_runs
 from ingestion.gdelt import (
     download_zipped_csv,
     fetch_last_update,
@@ -26,7 +28,27 @@ from ingestion.validate import validate_events
 logger = get_logger("ingestion.pipeline")
 
 
-def run_once(database_url: str | None = None) -> dict:
+def record_metrics(engine, metrics: dict, source: str) -> None:
+    """Persist one ingestion_runs row (Phase 10). Shared with the Airflow DAG."""
+    with engine.begin() as conn:
+        conn.execute(
+            ingestion_runs.insert(),
+            {
+                "run_at": datetime.now(UTC),
+                "source": source,
+                "rows_fetched": metrics["rows_fetched"],
+                "rows_parsed": metrics["rows_parsed"],
+                "rows_rejected": metrics["rows_rejected"],
+                "rows_loaded": metrics["rows_loaded"],
+                "titles_matched": metrics.get("titles_matched"),
+                "parse_drops": metrics.get("parse_drops", {}),
+                "validation_drops": metrics.get("validation_drops", {}),
+                "duration_seconds": metrics["duration_seconds"],
+            },
+        )
+
+
+def run_once(database_url: str | None = None, source: str = "cron") -> dict:
     """One full ingestion cycle. Returns the metrics dict it also logs."""
     started = time.monotonic()
     session = requests.Session()
@@ -60,6 +82,7 @@ def run_once(database_url: str | None = None) -> dict:
         "titles_matched": sum(1 for e in result.valid if e.page_title),
         "duration_seconds": round(time.monotonic() - started, 2),
     }
+    record_metrics(engine, metrics, source)
     logger.info("ingestion run complete", extra=metrics)
     return metrics
 

@@ -11,7 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
-from backend.app.main import app, engine_dep
+from backend.app.cache import EventsCache
+from backend.app.main import app, cache_dep, engine_dep
 from common.models import scored_metadata as metadata
 
 ADMIN_URL = os.environ.get(
@@ -148,9 +149,26 @@ def test_engine():
     admin.dispose()
 
 
+class InMemoryRedis:
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def setex(self, key, ttl, value):
+        self.store[key] = value
+
+
 @pytest.fixture()
-def client(test_engine):
+def fake_cache():
+    return EventsCache(client=InMemoryRedis())
+
+
+@pytest.fixture()
+def client(test_engine, fake_cache):
     app.dependency_overrides[engine_dep] = lambda: test_engine
+    app.dependency_overrides[cache_dep] = lambda: fake_cache
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -297,6 +315,77 @@ class TestReferenceTimeIntensity:
 
     def test_bad_at_rejected(self, client):
         assert client.get("/events", params={"at": "not-a-date"}).status_code == 422
+
+
+class TestEventsCaching:
+    def test_miss_then_hit_same_params(self, client):
+        first = client.get("/events", params={"bbox": "-10,35,30,60"})
+        assert first.headers["x-cache"] == "MISS"
+        second = client.get("/events", params={"bbox": "-10,35,30,60"})
+        assert second.headers["x-cache"] == "HIT"
+        assert second.json() == first.json()
+
+    def test_category_toggle_is_not_served_stale(self, client):
+        # The exact regression the cache key must prevent: same bbox/time,
+        # different category filter -> different results, never a shared entry.
+        all_events = client.get("/events", params={"bbox": "-180,-90,180,90"})
+        assert all_events.headers["x-cache"] == "MISS"
+        filtered = client.get(
+            "/events", params={"bbox": "-180,-90,180,90", "category": ["14"]}
+        )
+        assert filtered.headers["x-cache"] == "MISS"
+        assert [f["properties"]["id"] for f in filtered.json()["features"]] == [2]
+        themed = client.get(
+            "/events", params={"bbox": "-180,-90,180,90", "theme": ["protest"]}
+        )
+        assert themed.headers["x-cache"] == "MISS"
+
+    def test_hit_returns_identical_payload_with_filters(self, client):
+        params = {
+            "bbox": "-180,-90,180,90",
+            "category": ["04"],
+            "start": "2026-07-04T00:00:00Z",
+            "end": "2026-07-04T23:00:00Z",
+        }
+        first = client.get("/events", params=params)
+        second = client.get("/events", params=params)
+        assert second.headers["x-cache"] == "HIT"
+        assert second.json() == first.json()
+
+
+class TestIngestionMetricsEndpoint:
+    def test_empty_ok(self, client, test_engine):
+        from common.models import raw_metadata
+
+        raw_metadata.create_all(test_engine)
+        resp = client.get("/metrics/ingestion")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_returns_recent_runs(self, client, test_engine):
+        from common.models import ingestion_runs, raw_metadata
+
+        raw_metadata.create_all(test_engine)
+        with test_engine.begin() as conn:
+            conn.execute(
+                ingestion_runs.insert(),
+                {
+                    "run_at": T1,
+                    "source": "cron",
+                    "rows_fetched": 800,
+                    "rows_parsed": 800,
+                    "rows_rejected": 25,
+                    "rows_loaded": 775,
+                    "titles_matched": 700,
+                    "parse_drops": {},
+                    "validation_drops": {"invalid_coordinates": 25},
+                    "duration_seconds": 1.5,
+                },
+            )
+        body = client.get("/metrics/ingestion").json()
+        assert body[0]["rows_loaded"] == 775
+        assert body[0]["source"] == "cron"
+        assert body[0]["validation_drops"] == {"invalid_coordinates": 25}
 
 
 class TestValidation:

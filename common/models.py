@@ -22,7 +22,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 raw_metadata = MetaData()
 scored_metadata = MetaData()
@@ -59,6 +59,24 @@ def _core_columns() -> list[Column]:
 
 
 raw_events = Table("raw_events", raw_metadata, *_core_columns())
+
+# Phase 10: per-run pipeline metrics, persisted for "how does this behave at
+# scale" evidence (also emitted as structured logs since Phase 1).
+ingestion_runs = Table(
+    "ingestion_runs",
+    raw_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("source", Text, nullable=False),  # 'cron' | 'airflow' | 'manual'
+    Column("rows_fetched", Integer, nullable=False),
+    Column("rows_parsed", Integer, nullable=False),
+    Column("rows_rejected", Integer, nullable=False),
+    Column("rows_loaded", Integer, nullable=False),
+    Column("titles_matched", Integer),
+    Column("parse_drops", JSONB),
+    Column("validation_drops", JSONB),
+    Column("duration_seconds", Float, nullable=False),
+)
 
 events_scored = Table(
     "events_scored",

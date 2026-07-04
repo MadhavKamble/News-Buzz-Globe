@@ -77,6 +77,7 @@ def gdelt_ingest():
         ts = _cycle_ts(data_interval_end)
         workdir = DATA_DIR / ts
         workdir.mkdir(parents=True, exist_ok=True)
+        (workdir / "started_at.txt").write_text(datetime.now(UTC).isoformat())
         (workdir / "events.csv").write_text(
             download_zipped_csv(f"{GDELT_BASE}/{ts}.export.CSV.zip")
         )
@@ -121,17 +122,31 @@ def gdelt_ingest():
         from common.db import get_engine
         from ingestion.load import ensure_schema, event_to_row, upsert_events
 
+        from ingestion.pipeline import record_metrics
+
         wd = Path(workdir)
         events = _read_events(wd / "valid.jsonl")
         engine = get_engine()
         ensure_schema(engine)
         loaded = upsert_events(engine, [event_to_row(e) for e in events])
+        parse_drops = json.loads((wd / "parse_drops.json").read_text())
+        validation_drops = json.loads((wd / "validation_drops.json").read_text())
+        started_at = datetime.fromisoformat((wd / "started_at.txt").read_text())
+        rows_parsed = loaded + sum(validation_drops.values())
         metrics = {
             "cycle": wd.name,
+            "rows_fetched": rows_parsed + sum(parse_drops.values()),
+            "rows_parsed": rows_parsed,
+            "rows_rejected": sum(parse_drops.values()) + sum(validation_drops.values()),
             "rows_loaded": loaded,
-            "parse_drops": json.loads((wd / "parse_drops.json").read_text()),
-            "validation_drops": json.loads((wd / "validation_drops.json").read_text()),
+            "titles_matched": sum(1 for e in events if e.page_title),
+            "parse_drops": parse_drops,
+            "validation_drops": validation_drops,
+            "duration_seconds": round(
+                (datetime.now(UTC) - started_at).total_seconds(), 2
+            ),
         }
+        record_metrics(engine, metrics, source="airflow")
         print(f"metrics={json.dumps(metrics)}")
         shutil.rmtree(wd, ignore_errors=True)  # workdir is scratch, not an archive
 
