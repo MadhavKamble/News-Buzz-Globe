@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment / secrets
+.env
+*.env.local
+
+# Data / scratch
+data/
+*.csv
+*.CSV
+*.zip
+
+# dbt
+dbt_packages/
+target/
+logs/
+
+# Airflow (local dev artifacts)
+infra/airflow/logs/
+airflow.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

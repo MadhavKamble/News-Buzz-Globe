@@ -1,0 +1,26 @@
+name: news-buzz-globe
+
+services:
+  postgres:
+    # GHCR mirror of postgis/postgis (docker.io can be unreachable on
+    # IPv6-preferring hosts; ghcr.io is IPv4-only and equivalent).
+    image: ghcr.io/baosystems/postgis:16-3.4
+    container_name: nbg-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nbg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nbg_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-newsbuzz}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nbg} -d ${POSTGRES_DB:-newsbuzz}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
