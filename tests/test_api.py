@@ -145,6 +145,28 @@ class TestEvents:
         assert [f["properties"]["id"] for f in body["features"]] == [1, 3]
 
 
+class TestThemes:
+    def test_themes_endpoint(self, client):
+        body = client.get("/themes").json()
+        assert "diplomacy" in body and "conflict" in body
+        all_codes = sorted(c for t in body.values() for c in t["codes"])
+        assert all_codes == [f"{i:02d}" for i in range(1, 21)]
+
+    def test_theme_filter(self, client):
+        # 'protest' = root code 14 -> Tokyo fixture only.
+        body = client.get("/events", params={"theme": ["protest"]}).json()
+        assert [f["properties"]["id"] for f in body["features"]] == [2]
+
+    def test_theme_merges_with_category(self, client):
+        body = client.get(
+            "/events", params={"theme": ["protest"], "category": ["04"]}
+        ).json()
+        assert len(body["features"]) == 3
+
+    def test_unknown_theme_rejected(self, client):
+        assert client.get("/events", params={"theme": ["sports"]}).status_code == 422
+
+
 class TestReferenceTimeIntensity:
     def test_at_recomputes_recency(self, client):
         # Both '04' events have identical counts; at T1 the Sydney event

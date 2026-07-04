@@ -9,6 +9,7 @@ export async function fetchEvents(params = {}) {
   if (params.end) query.set('end', params.end);
   if (params.at) query.set('at', params.at);
   (params.categories || []).forEach((c) => query.append('category', c));
+  (params.themes || []).forEach((t) => query.append('theme', t));
   query.set('limit', params.limit ?? 1000);
 
   const resp = await fetch(`${API_BASE}/events?${query}`);
@@ -20,4 +21,10 @@ export async function fetchEvents(params = {}) {
     lat: f.geometry.coordinates[1],
     ...f.properties,
   }));
+}
+
+export async function fetchThemes() {
+  const resp = await fetch(`${API_BASE}/themes`);
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  return resp.json();
 }

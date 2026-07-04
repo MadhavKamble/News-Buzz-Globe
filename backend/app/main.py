@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 
 from backend.app.queries import fetch_events
 from backend.app.schemas import BoundingBox, FeatureCollection
+from common.cameo import CAMEO_THEMES, codes_for_themes
 from common.db import get_engine
 from common.logging_config import get_logger
 
@@ -43,6 +44,12 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/themes")
+def themes() -> dict:
+    """CAMEO root-code theme groupings used by the category filter."""
+    return CAMEO_THEMES
+
+
 @app.get("/events", response_model=FeatureCollection)
 def get_events(
     bbox: str | None = Query(
@@ -55,6 +62,10 @@ def get_events(
     category: list[str] | None = Query(
         None,
         description="CAMEO root codes ('01'-'20'); repeat the param for multiple.",
+    ),
+    theme: list[str] | None = Query(
+        None,
+        description="Theme keys from GET /themes; repeat for multiple. Merged with 'category'.",
     ),
     limit: int = Query(500, ge=1, le=5000, description="Max events, highest intensity first."),
     at: datetime | None = Query(
@@ -81,12 +92,21 @@ def get_events(
                     status_code=422,
                     detail=f"invalid CAMEO root code {code!r}; expected '01'-'20'",
                 )
+    codes = list(category or [])
+    if theme:
+        try:
+            codes.extend(codes_for_themes(theme))
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unknown theme {exc.args[0]!r}; see GET /themes",
+            ) from exc
     return fetch_events(
         engine,
         bbox=parsed_bbox,
         start=start,
         end=end,
-        categories=category,
+        categories=sorted(set(codes)) or None,
         limit=limit,
         at=at,
     )

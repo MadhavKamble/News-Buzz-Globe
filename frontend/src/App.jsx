@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Globe from 'react-globe.gl';
-import { fetchEvents } from './api';
+import { fetchEvents, fetchThemes } from './api';
 import { intensityColor } from './colors';
 import EventPopup from './components/EventPopup';
+import FilterPanel from './components/FilterPanel';
+import SearchBox from './components/SearchBox';
 import TimeSlider, { STEP_MINUTES } from './components/TimeSlider';
 
 const REFRESH_MS = 5 * 60 * 1000; // matches GDELT's 15-min cadence comfortably
@@ -18,9 +20,11 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState(null);
   const [offsetSteps, setOffsetSteps] = useState(0); // 0 = live
+  const [themes, setThemes] = useState({});
+  const [activeThemes, setActiveThemes] = useState([]);
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
-  const loadEvents = useCallback(async (steps) => {
+  const loadEvents = useCallback(async (steps, themeKeys) => {
     try {
       const t = new Date(Date.now() - steps * STEP_MINUTES * 60 * 1000);
       const start = new Date(t.getTime() - WINDOW_HOURS * 60 * 60 * 1000);
@@ -29,6 +33,7 @@ export default function App() {
           start: start.toISOString(),
           end: t.toISOString(),
           at: t.toISOString(),
+          themes: themeKeys,
           limit: 1000,
         }),
       );
@@ -38,17 +43,24 @@ export default function App() {
     }
   }, []);
 
-  // Fetch on slider move (debounced); poll only while live.
+  useEffect(() => {
+    fetchThemes().then(setThemes).catch(() => {});
+  }, []);
+
+  // Fetch on slider/filter change (debounced); poll only while live.
   useEffect(() => {
     clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => loadEvents(offsetSteps), SCRUB_DEBOUNCE_MS);
+    debounceTimer.current = setTimeout(
+      () => loadEvents(offsetSteps, activeThemes),
+      SCRUB_DEBOUNCE_MS,
+    );
     if (offsetSteps !== 0) return () => clearTimeout(debounceTimer.current);
-    const timer = setInterval(() => loadEvents(0), REFRESH_MS);
+    const timer = setInterval(() => loadEvents(0, activeThemes), REFRESH_MS);
     return () => {
       clearTimeout(debounceTimer.current);
       clearInterval(timer);
     };
-  }, [offsetSteps, loadEvents]);
+  }, [offsetSteps, activeThemes, loadEvents]);
 
   useEffect(() => {
     const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
@@ -81,6 +93,16 @@ export default function App() {
     globeRef.current?.pointOfView(
       { lat: point.lat, lng: point.lng, altitude: 1.2 },
       800,
+    );
+  }, []);
+
+  const handleFlyTo = useCallback(({ lat, lng, altitude }) => {
+    globeRef.current?.pointOfView({ lat, lng, altitude }, 1200);
+  }, []);
+
+  const toggleTheme = useCallback((key) => {
+    setActiveThemes((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
   }, []);
 
@@ -117,6 +139,15 @@ export default function App() {
         </p>
       </header>
       {error && <div className="error-toast">API unreachable: {error}</div>}
+      <div className="controls">
+        <SearchBox events={events} onFlyTo={handleFlyTo} />
+        <FilterPanel
+          themes={themes}
+          active={activeThemes}
+          onToggle={toggleTheme}
+          onClear={() => setActiveThemes([])}
+        />
+      </div>
       <EventPopup event={selected} onClose={() => setSelected(null)} />
       <TimeSlider offsetSteps={offsetSteps} onChange={setOffsetSteps} />
     </div>
