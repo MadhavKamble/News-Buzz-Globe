@@ -60,6 +60,39 @@ def themes() -> dict:
     return CAMEO_THEMES
 
 
+@app.get("/stats")
+def stats(engine: Engine = Depends(engine_dep)) -> dict:
+    """Pipeline liveness numbers for the UI stats bar."""
+    from sqlalchemy import func as sqlfunc
+    from sqlalchemy import select
+
+    from common.models import events_scored, ingestion_runs, story_clusters
+
+    with engine.connect() as conn:
+        total_events = conn.execute(
+            select(sqlfunc.count()).select_from(events_scored)
+        ).scalar()
+        latest_story_run = conn.execute(
+            select(sqlfunc.max(story_clusters.c.run_at))
+        ).scalar()
+        total_stories = conn.execute(
+            select(sqlfunc.count())
+            .select_from(story_clusters)
+            .where(story_clusters.c.run_at == latest_story_run)
+        ).scalar()
+        last_run = conn.execute(
+            select(ingestion_runs.c.run_at, ingestion_runs.c.rows_loaded)
+            .order_by(ingestion_runs.c.run_at.desc())
+            .limit(1)
+        ).first()
+    return {
+        "total_events": total_events or 0,
+        "total_stories": total_stories or 0,
+        "last_ingestion_at": last_run.run_at.isoformat() if last_run else None,
+        "last_ingestion_rows": last_run.rows_loaded if last_run else None,
+    }
+
+
 @app.get("/metrics/ingestion")
 def ingestion_metrics(
     limit: int = Query(20, ge=1, le=500),

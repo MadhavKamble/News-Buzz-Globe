@@ -29,6 +29,12 @@ export async function fetchThemes() {
   return resp.json();
 }
 
+export async function fetchStats() {
+  const resp = await fetch(`${API_BASE}/stats`);
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  return resp.json();
+}
+
 // Deduplicated story clusters (Phase 8) from the latest clustering run.
 export async function fetchStories(limit = 800) {
   const resp = await fetch(`${API_BASE}/stories?limit=${limit}`);

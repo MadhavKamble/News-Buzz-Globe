@@ -136,9 +136,10 @@ def test_engine():
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
     metadata.create_all(engine)
     from common.models import events_scored as events
-    from common.models import stories_metadata, story_clusters
+    from common.models import raw_metadata, stories_metadata, story_clusters
 
     stories_metadata.create_all(engine)
+    raw_metadata.create_all(engine)
     with engine.begin() as conn:
         conn.execute(events.insert(), [_fixture_row(*f) for f in FIXTURES])
         conn.execute(story_clusters.insert(), STORY_FIXTURES)
@@ -351,6 +352,15 @@ class TestEventsCaching:
         second = client.get("/events", params=params)
         assert second.headers["x-cache"] == "HIT"
         assert second.json() == first.json()
+
+
+class TestStats:
+    def test_stats_shape(self, client):
+        body = client.get("/stats").json()
+        assert body["total_events"] == 3
+        # latest story run (T1) has 2 clusters; the stale T0 run is excluded
+        assert body["total_stories"] == 2
+        assert "last_ingestion_at" in body
 
 
 class TestIngestionMetricsEndpoint:
