@@ -88,6 +88,10 @@ story_clusters = Table(
     Column("avg_tone", Float),
     Column("event_ids", ARRAY(BigInteger), nullable=False),
     Column("source_urls", ARRAY(Text)),
+    # Phase 9: coverage trend vs. one hour earlier.
+    Column("trend", Text, nullable=False, server_default="steady"),
+    Column("articles_last_hour", Integer),
+    Column("articles_prev_hour", Integer),
     Column("location", Text),
     Column("country_code", Text),
     Column("earliest", DateTime(timezone=True)),

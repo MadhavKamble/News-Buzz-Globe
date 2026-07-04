@@ -37,13 +37,43 @@ def _member_weight(row) -> tuple:
     return (row.num_articles or 0, row.intensity)
 
 
+def compute_trend(members: list, run_at: datetime) -> tuple[str, int, int]:
+    """Growing or dying vs. 1 hour ago.
+
+    Compares article volume that arrived in the last hour against the hour
+    before it (GDELT re-emits events as coverage grows, so date_added buckets
+    approximate coverage arrival). Returns (trend, last_hour, prev_hour).
+    """
+    one_hour_ago = run_at - timedelta(hours=1)
+    two_hours_ago = run_at - timedelta(hours=2)
+    last_hour = sum(
+        m.num_articles or 0 for m in members if m.date_added >= one_hour_ago
+    )
+    prev_hour = sum(
+        m.num_articles or 0
+        for m in members
+        if two_hours_ago <= m.date_added < one_hour_ago
+    )
+    if last_hour > prev_hour * 1.2:
+        trend = "rising"
+    elif last_hour < prev_hour * 0.8:
+        trend = "falling"
+    else:
+        trend = "steady"
+    return trend, last_hour, prev_hour
+
+
 def build_cluster_row(members: list, run_at: datetime, summary: str) -> dict:
     rep = max(members, key=_member_weight)
     tones = [m.avg_tone for m in members if m.avg_tone is not None]
     urls = list(
         dict.fromkeys(m.source_url for m in members if m.source_url)
     )[:5]
+    trend, last_hour, prev_hour = compute_trend(members, run_at)
     return {
+        "trend": trend,
+        "articles_last_hour": last_hour,
+        "articles_prev_hour": prev_hour,
         "run_at": run_at,
         "summary": summary,
         "lat": rep.lat,

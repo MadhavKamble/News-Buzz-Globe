@@ -67,6 +67,9 @@ STORY_FIXTURES = [
         "total_sources": 9,
         "intensity": 0.8,
         "avg_tone": -4.2,
+        "trend": "rising",
+        "articles_last_hour": 40,
+        "articles_prev_hour": 20,
         "event_ids": [11, 12, 13],
         "source_urls": ["https://example.com/a", "https://example.com/b"],
         "location": "Mumbai, India",
@@ -84,6 +87,9 @@ STORY_FIXTURES = [
         "total_sources": 3,
         "intensity": 0.4,
         "avg_tone": 2.1,
+        "trend": "steady",
+        "articles_last_hour": 4,
+        "articles_prev_hour": 4,
         "event_ids": [14],
         "source_urls": ["https://example.com/c"],
         "location": "Brussels, Belgium",
@@ -101,6 +107,9 @@ STORY_FIXTURES = [
         "total_sources": 2,
         "intensity": 0.9,
         "avg_tone": 0.0,
+        "trend": "falling",
+        "articles_last_hour": 0,
+        "articles_prev_hour": 5,
         "event_ids": [1, 2],
         "source_urls": [],
         "location": None,
@@ -243,6 +252,12 @@ class TestStories:
         assert len(top["source_urls"]) == 2
         assert top["location"] == "Mumbai, India"
         assert 0.0 <= top["intensity"] <= 1.0
+
+    def test_trend_fields(self, client):
+        props = [f["properties"] for f in client.get("/stories").json()["features"]]
+        assert [p["trend"] for p in props] == ["rising", "steady"]
+        assert props[0]["articles_last_hour"] == 40
+        assert props[0]["articles_prev_hour"] == 20
 
     def test_limit(self, client):
         body = client.get("/stories", params={"limit": 1}).json()

@@ -67,6 +67,9 @@ class StoryProperties(BaseModel):
     total_sources: int | None
     intensity: float
     avg_tone: float | None
+    trend: Literal["rising", "falling", "steady"] = "steady"
+    articles_last_hour: int | None = None
+    articles_prev_hour: int | None = None
     location: str | None
     country_code: str | None
     source_urls: list[str]

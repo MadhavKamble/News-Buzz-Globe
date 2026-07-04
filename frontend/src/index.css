@@ -113,15 +113,38 @@ body,
   margin-bottom: 2px;
 }
 
-.view-toggle {
+.toggles {
   position: fixed;
   top: 20px;
   right: 20px;
+  display: flex;
+  gap: 8px;
+}
+
+.view-toggle {
   display: flex;
   border: 1px solid rgba(136, 170, 255, 0.4);
   border-radius: 999px;
   overflow: hidden;
   background: rgba(12, 14, 34, 0.9);
+}
+
+.popup-trend {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.trend-rising {
+  color: #7de37d;
+}
+
+.trend-falling {
+  color: #f08a8a;
+}
+
+.trend-steady {
+  color: #9ab;
 }
 
 .view-toggle button {

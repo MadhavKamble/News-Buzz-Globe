@@ -31,6 +31,13 @@ export default function EventPopup({ event, onClose }) {
           <dd>{event.avg_tone != null ? event.avg_tone.toFixed(1) : '–'}</dd>
         </div>
       </dl>
+      {event.trend && (
+        <p className={`popup-trend trend-${event.trend}`}>
+          {event.trend === 'rising' && '▲ Rising — coverage growing vs. 1h ago'}
+          {event.trend === 'falling' && '▼ Fading — coverage shrinking vs. 1h ago'}
+          {event.trend === 'steady' && '▬ Steady coverage vs. 1h ago'}
+        </p>
+      )}
       {event.member_count > 1 && (
         <p className="popup-merged">
           ✦ {event.member_count} reports merged · AI-generated headline

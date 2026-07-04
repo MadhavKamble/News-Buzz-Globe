@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Globe from 'react-globe.gl';
 import { fetchEvents, fetchStories, fetchThemes } from './api';
-import { intensityColor } from './colors';
+import { intensityColor, toneColor } from './colors';
 import EventPopup from './components/EventPopup';
 import FilterPanel from './components/FilterPanel';
 import SearchBox from './components/SearchBox';
@@ -23,6 +23,7 @@ export default function App() {
   const [themes, setThemes] = useState({});
   const [activeThemes, setActiveThemes] = useState([]);
   const [viewMode, setViewMode] = useState('stories'); // 'stories' | 'events'
+  const [colorMode, setColorMode] = useState('buzz'); // 'buzz' | 'tone'
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   // Stories are computed for "now" only; scrubbing history uses raw events.
@@ -137,7 +138,9 @@ export default function App() {
         pointsTransitionDuration={600}
         pointAltitude={(d) => 0.01 + d.intensity * 0.35}
         pointRadius={(d) => 0.12 + d.intensity * 0.5}
-        pointColor={(d) => intensityColor(d.intensity)}
+        pointColor={(d) =>
+          colorMode === 'tone' ? toneColor(d.avg_tone) : intensityColor(d.intensity)
+        }
         pointLabel={(d) =>
           `<div class="tooltip"><b>${escapeHtml(d.title || d.location || 'Event')}</b><br/>` +
           `buzz ${Math.round(d.intensity * 100)} · ${d.num_articles ?? '?'} articles</div>`
@@ -154,22 +157,40 @@ export default function App() {
           {offsetSteps === 0 ? 'live' : 'historical'} · GDELT, updated every 15 min
         </p>
       </header>
-      <div className="view-toggle">
-        <button
-          className={effectiveMode === 'stories' ? 'seg-on' : ''}
-          onClick={() => {
-            setViewMode('stories');
-            setOffsetSteps(0);
-          }}
-        >
-          Stories
-        </button>
-        <button
-          className={effectiveMode === 'events' ? 'seg-on' : ''}
-          onClick={() => setViewMode('events')}
-        >
-          Events
-        </button>
+      <div className="toggles">
+        <div className="view-toggle">
+          <button
+            className={effectiveMode === 'stories' ? 'seg-on' : ''}
+            onClick={() => {
+              setViewMode('stories');
+              setOffsetSteps(0);
+            }}
+          >
+            Stories
+          </button>
+          <button
+            className={effectiveMode === 'events' ? 'seg-on' : ''}
+            onClick={() => setViewMode('events')}
+          >
+            Events
+          </button>
+        </div>
+        <div className="view-toggle">
+          <button
+            className={colorMode === 'buzz' ? 'seg-on' : ''}
+            onClick={() => setColorMode('buzz')}
+            title="Color markers by buzz intensity"
+          >
+            🔥 Buzz
+          </button>
+          <button
+            className={colorMode === 'tone' ? 'seg-on' : ''}
+            onClick={() => setColorMode('tone')}
+            title="Color markers by sentiment (GDELT AvgTone)"
+          >
+            ± Tone
+          </button>
+        </div>
       </div>
       {error && <div className="error-toast">API unreachable: {error}</div>}
       <div className="controls">
