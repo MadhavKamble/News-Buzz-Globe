@@ -145,6 +145,41 @@ class TestEvents:
         assert [f["properties"]["id"] for f in body["features"]] == [1, 3]
 
 
+class TestReferenceTimeIntensity:
+    def test_at_recomputes_recency(self, client):
+        # Both '04' events have identical counts; at T1 the Sydney event
+        # (date_added=T1) is fresher than Paris (T0) regardless of the higher
+        # stored intensity fixture value for Paris.
+        body = client.get(
+            "/events",
+            params={"category": ["04"], "at": "2026-07-04T18:00:00Z"},
+        ).json()
+        ids = [f["properties"]["id"] for f in body["features"]]
+        assert ids == [3, 1]
+        intensities = [f["properties"]["intensity"] for f in body["features"]]
+        assert intensities[0] > intensities[1]
+        assert all(0.0 <= i <= 1.0 for i in intensities)
+
+    def test_without_at_uses_stored_intensity(self, client):
+        body = client.get("/events", params={"category": ["04"]}).json()
+        assert [f["properties"]["id"] for f in body["features"]] == [1, 3]
+
+    def test_at_with_time_window(self, client):
+        body = client.get(
+            "/events",
+            params={
+                "start": "2026-07-04T00:00:00Z",
+                "end": "2026-07-04T13:00:00Z",
+                "at": "2026-07-04T13:00:00Z",
+            },
+        ).json()
+        # Only the two T0 events fall in the window.
+        assert len(body["features"]) == 2
+
+    def test_bad_at_rejected(self, client):
+        assert client.get("/events", params={"at": "not-a-date"}).status_code == 422
+
+
 class TestValidation:
     @pytest.mark.parametrize(
         "bbox",

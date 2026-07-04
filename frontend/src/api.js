@@ -7,6 +7,7 @@ export async function fetchEvents(params = {}) {
   if (params.bbox) query.set('bbox', params.bbox);
   if (params.start) query.set('start', params.start);
   if (params.end) query.set('end', params.end);
+  if (params.at) query.set('at', params.at);
   (params.categories || []).forEach((c) => query.append('category', c));
   query.set('limit', params.limit ?? 1000);
 

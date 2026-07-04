@@ -57,6 +57,13 @@ def get_events(
         description="CAMEO root codes ('01'-'20'); repeat the param for multiple.",
     ),
     limit: int = Query(500, ge=1, le=5000, description="Max events, highest intensity first."),
+    at: datetime | None = Query(
+        None,
+        description=(
+            "Reference time for intensity: recency decay is computed relative to "
+            "this instant (time-slider position). Defaults to as-of-ingestion scores."
+        ),
+    ),
     engine: Engine = Depends(engine_dep),
 ) -> FeatureCollection:
     parsed_bbox = None
@@ -81,4 +88,5 @@ def get_events(
         end=end,
         categories=category,
         limit=limit,
+        at=at,
     )

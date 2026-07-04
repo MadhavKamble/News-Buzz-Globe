@@ -109,6 +109,59 @@ body,
   text-decoration: underline;
 }
 
+.time-slider {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(680px, calc(100vw - 40px));
+  background: rgba(12, 14, 34, 0.9);
+  border: 1px solid rgba(136, 170, 255, 0.35);
+  border-radius: 999px;
+  padding: 10px 18px;
+  backdrop-filter: blur(6px);
+}
+
+.time-slider input[type='range'] {
+  flex: 1;
+  accent-color: #ff8c42;
+  cursor: pointer;
+}
+
+.live-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #99a;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.live-btn.live-on {
+  color: #ff5d5d;
+  border-color: rgba(255, 93, 93, 0.6);
+}
+
+.time-label {
+  font-size: 0.78rem;
+  min-width: 128px;
+  text-align: right;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-label.time-live {
+  color: #ff5d5d;
+  font-weight: 700;
+}
+
 .error-toast {
   position: fixed;
   bottom: 20px;

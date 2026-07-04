@@ -2,8 +2,9 @@
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Float, func, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.sql import literal
 
 from backend.app.schemas import (
     BoundingBox,
@@ -13,6 +14,36 @@ from backend.app.schemas import (
     PointGeometry,
 )
 from common.models import events
+from ingestion.config import IntensityConfig
+
+
+def _effective_intensity(at: datetime):
+    """Intensity recomputed with recency decay relative to `at` (SQL-side).
+
+    Mirrors ingestion.scoring.intensity_score so scrubbing the time slider
+    makes hotspots grow/fade instead of showing as-of-ingestion scores.
+    """
+    cfg = IntensityConfig()
+    norm_articles = func.least(
+        1.0,
+        func.ln(1.0 + func.greatest(func.coalesce(events.c.num_articles, 0), 0))
+        / func.ln(literal(1.0 + cfg.articles_cap, Float)),
+    )
+    norm_sources = func.least(
+        1.0,
+        func.ln(1.0 + func.greatest(func.coalesce(events.c.num_sources, 0), 0))
+        / func.ln(literal(1.0 + cfg.sources_cap, Float)),
+    )
+    age_hours = func.greatest(
+        0.0,
+        func.extract("epoch", literal(at) - events.c.date_added) / 3600.0,
+    )
+    decay = func.exp(-0.6931471805599453 * age_hours / cfg.half_life_hours)
+    return (
+        cfg.w_articles * norm_articles
+        + cfg.w_sources * norm_sources
+        + cfg.w_recency * decay
+    )
 
 
 def fetch_events(
@@ -22,8 +53,14 @@ def fetch_events(
     end: datetime | None = None,
     categories: list[str] | None = None,
     limit: int = 500,
+    at: datetime | None = None,
 ) -> FeatureCollection:
-    stmt = select(events)
+    intensity_col = (
+        _effective_intensity(at).label("effective_intensity")
+        if at is not None
+        else events.c.intensity.label("effective_intensity")
+    )
+    stmt = select(events, intensity_col)
     if bbox is not None:
         envelope = func.ST_MakeEnvelope(bbox.west, bbox.south, bbox.east, bbox.north, 4326)
         stmt = stmt.where(events.c.geom.op("&&")(envelope))
@@ -33,7 +70,7 @@ def fetch_events(
         stmt = stmt.where(events.c.date_added <= end)
     if categories:
         stmt = stmt.where(events.c.event_root_code.in_(categories))
-    stmt = stmt.order_by(events.c.intensity.desc()).limit(limit)
+    stmt = stmt.order_by(intensity_col.desc()).limit(limit)
 
     features: list[Feature] = []
     with engine.connect() as conn:
@@ -44,7 +81,7 @@ def fetch_events(
                     properties=EventProperties(
                         id=row["global_event_id"],
                         title=row["page_title"],
-                        intensity=row["intensity"],
+                        intensity=row["effective_intensity"],
                         num_articles=row["num_articles"],
                         num_sources=row["num_sources"],
                         num_mentions=row["num_mentions"],
