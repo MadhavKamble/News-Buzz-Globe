@@ -1,0 +1,46 @@
+export default function EventPopup({ event, onClose }) {
+  if (!event) return null;
+  const when = new Date(event.date_added).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  return (
+    <aside className="popup">
+      <button className="popup-close" onClick={onClose} aria-label="Close">
+        ×
+      </button>
+      <h2 className="popup-title">{event.title || describeEvent(event)}</h2>
+      <p className="popup-meta">
+        {event.location || 'Unknown location'} · {when}
+      </p>
+      <dl className="popup-stats">
+        <div>
+          <dt>Buzz</dt>
+          <dd>{Math.round(event.intensity * 100)}</dd>
+        </div>
+        <div>
+          <dt>Articles</dt>
+          <dd>{event.num_articles ?? '–'}</dd>
+        </div>
+        <div>
+          <dt>Sources</dt>
+          <dd>{event.num_sources ?? '–'}</dd>
+        </div>
+        <div>
+          <dt>Tone</dt>
+          <dd>{event.avg_tone != null ? event.avg_tone.toFixed(1) : '–'}</dd>
+        </div>
+      </dl>
+      {event.source_url && (
+        <a className="popup-link" href={event.source_url} target="_blank" rel="noreferrer">
+          Read article ↗
+        </a>
+      )}
+    </aside>
+  );
+}
+
+function describeEvent(event) {
+  const actors = [event.actor1, event.actor2].filter(Boolean).join(' – ');
+  return actors || `Event ${event.id}`;
+}
