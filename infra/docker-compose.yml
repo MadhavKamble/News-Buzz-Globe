@@ -25,8 +25,9 @@ x-airflow-common: &airflow-common
     PYTHONPATH: /opt/newsbuzz
     DATABASE_URL: >-
       postgresql+psycopg2://${POSTGRES_USER:-nbg}:${POSTGRES_PASSWORD:-nbg_dev_password}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-newsbuzz}
-    # Only dependency the stock Airflow image lacks for our ingestion code.
-    _PIP_ADDITIONAL_REQUIREMENTS: "GeoAlchemy2==0.15.2"
+    # Dependencies the stock Airflow image lacks: GeoAlchemy2 for the loader,
+    # dbt for the transform task (installed at container start; ~1 min).
+    _PIP_ADDITIONAL_REQUIREMENTS: "GeoAlchemy2==0.15.2 dbt-postgres==1.10.2"
     # Outbound proxy passthrough (needed on proxied networks, e.g. campus /
     # corporate; empty and harmless elsewhere). Postgres stays direct.
     HTTP_PROXY: ${HTTP_PROXY:-}

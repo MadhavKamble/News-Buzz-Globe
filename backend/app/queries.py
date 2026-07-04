@@ -13,8 +13,8 @@ from backend.app.schemas import (
     FeatureCollection,
     PointGeometry,
 )
-from common.models import events
-from ingestion.config import IntensityConfig
+from common.models import events_scored as events
+from ingestion.config import IntensityConfig  # single source of formula params
 
 
 def _effective_intensity(at: datetime):

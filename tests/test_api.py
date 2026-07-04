@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from backend.app.main import app, engine_dep
-from common.models import metadata
+from common.models import scored_metadata as metadata
 
 ADMIN_URL = os.environ.get(
     "DATABASE_URL",
@@ -70,7 +70,7 @@ def test_engine():
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
     metadata.create_all(engine)
-    from common.models import events
+    from common.models import events_scored as events
 
     with engine.begin() as conn:
         conn.execute(events.insert(), [_fixture_row(*f) for f in FIXTURES])

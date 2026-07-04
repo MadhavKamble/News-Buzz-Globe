@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: cleaned_events
+    description: Validated, deduplicated GDELT events (declarative data-quality layer).
+    columns:
+      - name: global_event_id
+        description: GDELT GLOBALEVENTID (natural key).
+        tests: [unique, not_null]
+      - name: lat
+        tests: [not_null]
+      - name: lon
+        tests: [not_null]
+      - name: event_code
+        tests: [not_null]
+      - name: event_root_code
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+                       "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"]
+      - name: quad_class
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+              quote: false
+
+  - name: events_scored
+    description: API-facing table — cleaned events with buzz intensity and PostGIS geometry.
+    columns:
+      - name: global_event_id
+        tests: [unique, not_null]
+      - name: intensity
+        tests: [not_null]
+      - name: geom
+        tests: [not_null]
+      - name: date_added
+        tests: [not_null]

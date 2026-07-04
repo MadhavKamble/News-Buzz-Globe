@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: gdelt
+    description: Raw landing tables written by the Python ingestion pipeline.
+    schema: public
+    tables:
+      - name: raw_events
+        description: >
+          Parsed GDELT 2.0 event rows (one per GLOBALEVENTID, upserted every
+          15 minutes) joined with GKG page titles. Ingestion applies
+          operational validation (drop/garbage accounting); the cleaned model
+          re-expresses those rules declaratively.
+        columns:
+          - name: global_event_id
+            tests: [unique, not_null]
+          - name: date_added
+            tests: [not_null]
+
+models:
+  - name: stg_gdelt_events
+    description: Typed 1:1 staging view over raw GDELT events.
+    columns:
+      - name: global_event_id
+        tests: [unique, not_null]

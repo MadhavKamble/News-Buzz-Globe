@@ -20,3 +20,9 @@ fi
 
 cd "${REPO_DIR}"
 "${REPO_DIR}/.venv/bin/python" -m ingestion.pipeline >> "${LOG_DIR}/ingestion.log" 2>&1
+
+# Phase 7+: scoring/geometry are dbt models; rebuild + test after each load.
+"${REPO_DIR}/.venv/bin/dbt" build \
+  --project-dir "${REPO_DIR}/dbt" \
+  --profiles-dir "${REPO_DIR}/dbt/profiles" \
+  >> "${LOG_DIR}/dbt.log" 2>&1

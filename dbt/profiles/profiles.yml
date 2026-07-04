@@ -1,0 +1,12 @@
+news_buzz_globe:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('NBG_DB_HOST', 'localhost') }}"
+      port: "{{ env_var('NBG_DB_PORT', '5432') | int }}"
+      user: "{{ env_var('NBG_DB_USER', 'nbg') }}"
+      password: "{{ env_var('NBG_DB_PASSWORD', 'nbg_dev_password') }}"
+      dbname: "{{ env_var('NBG_DB_NAME', 'newsbuzz') }}"
+      schema: public
+      threads: 2

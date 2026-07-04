@@ -1,7 +1,12 @@
-"""SQLAlchemy table definitions shared by the ingestion loader and the API.
+"""SQLAlchemy table definitions.
 
-From Phase 7 onward, dbt owns the transformed/scored layer; this table is the
-raw+scored landing table the pipeline writes to.
+Two layers since Phase 7:
+- ``raw_events`` (raw_metadata): landing table owned and created by the
+  Python ingestion pipeline. No geometry, no scores.
+- ``events_scored`` (scored_metadata): transformed table owned and built by
+  the dbt project (staging -> cleaned -> scored). Declared here only so the
+  API can query it and tests can create an equivalent fixture table — the
+  pipeline never creates it in production.
 """
 
 from geoalchemy2 import Geometry
@@ -18,36 +23,48 @@ from sqlalchemy import (
     func,
 )
 
-metadata = MetaData()
+raw_metadata = MetaData()
+scored_metadata = MetaData()
 
-events = Table(
-    "events",
-    metadata,
-    Column("global_event_id", BigInteger, primary_key=True, autoincrement=False),
-    Column("event_date", DateTime(timezone=True), nullable=False),
-    Column("date_added", DateTime(timezone=True), nullable=False, index=True),
-    Column("actor1_name", Text),
-    Column("actor2_name", Text),
-    Column("event_code", Text, nullable=False),
-    Column("event_root_code", Text, nullable=False, index=True),
-    Column("quad_class", SmallInteger),
-    Column("num_mentions", Integer),
-    Column("num_sources", Integer),
-    Column("num_articles", Integer),
-    Column("avg_tone", Float),
-    Column("action_geo_full_name", Text),
-    Column("action_geo_country_code", Text),
-    Column("lat", Float, nullable=False),
-    Column("lon", Float, nullable=False),
-    # GeoAlchemy2 auto-creates the GiST index (idx_events_geom) for this column.
+
+def _core_columns() -> list[Column]:
+    return [
+        Column("global_event_id", BigInteger, primary_key=True, autoincrement=False),
+        Column("event_date", DateTime(timezone=True), nullable=False),
+        Column("date_added", DateTime(timezone=True), nullable=False, index=True),
+        Column("actor1_name", Text),
+        Column("actor2_name", Text),
+        Column("event_code", Text, nullable=False),
+        Column("event_root_code", Text, nullable=False),
+        Column("quad_class", SmallInteger),
+        Column("num_mentions", Integer),
+        Column("num_sources", Integer),
+        Column("num_articles", Integer),
+        Column("avg_tone", Float),
+        Column("action_geo_full_name", Text),
+        Column("action_geo_country_code", Text),
+        Column("lat", Float, nullable=False),
+        Column("lon", Float, nullable=False),
+        Column("source_url", Text),
+        Column("page_title", Text),
+        Column(
+            "ingested_at",
+            DateTime(timezone=True),
+            nullable=False,
+            server_default=func.now(),
+        ),
+    ]
+
+
+raw_events = Table("raw_events", raw_metadata, *_core_columns())
+
+events_scored = Table(
+    "events_scored",
+    scored_metadata,
+    *_core_columns(),
+    # GeoAlchemy2 auto-creates a GiST index for this column on create_all
+    # (tests); in production dbt's post-hook builds the same index.
     Column("geom", Geometry(geometry_type="POINT", srid=4326), nullable=False),
-    Column("source_url", Text),
-    Column("page_title", Text),
     Column("intensity", Float, nullable=False),
-    Column(
-        "ingested_at",
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    ),
+    Column("scored_at", DateTime(timezone=True), server_default=func.now()),
 )

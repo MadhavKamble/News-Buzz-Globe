@@ -1,23 +1,23 @@
-"""Load validated, scored events into Postgres/PostGIS.
+"""Load validated events into the raw landing table (Postgres).
 
 Upsert on GLOBALEVENTID handles duplicates across export windows: GDELT
 re-emits an event when its mention/article counts grow, so on conflict we
-take the fresher counts and rescored intensity.
+take the fresher counts. Scoring/geometry happen downstream in dbt
+(staging -> cleaned -> scored) since Phase 7.
 """
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 
-from common.models import events as events_table
-from common.models import metadata
+from common.models import raw_events, raw_metadata
 from ingestion.gdelt import RawEvent
 
 
 def ensure_schema(engine: Engine) -> None:
-    metadata.create_all(engine)
+    raw_metadata.create_all(engine)
 
 
-def event_to_row(event: RawEvent, intensity: float) -> dict:
+def event_to_row(event: RawEvent) -> dict:
     return {
         "global_event_id": event.global_event_id,
         "event_date": event.event_date,
@@ -35,10 +35,8 @@ def event_to_row(event: RawEvent, intensity: float) -> dict:
         "action_geo_country_code": event.action_geo_country_code,
         "lat": event.lat,
         "lon": event.lon,
-        "geom": f"SRID=4326;POINT({event.lon} {event.lat})",
         "source_url": event.source_url,
         "page_title": event.page_title,
-        "intensity": intensity,
     }
 
 
@@ -51,7 +49,6 @@ def upsert_events(engine: Engine, rows: list[dict], chunk_size: int = 1000) -> i
         "num_sources",
         "num_articles",
         "avg_tone",
-        "intensity",
         "page_title",
         "date_added",
     ]
@@ -59,7 +56,7 @@ def upsert_events(engine: Engine, rows: list[dict], chunk_size: int = 1000) -> i
     with engine.begin() as conn:
         for start in range(0, len(rows), chunk_size):
             chunk = rows[start : start + chunk_size]
-            stmt = pg_insert(events_table).values(chunk)
+            stmt = pg_insert(raw_events).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 index_elements=["global_event_id"],
                 set_={col: stmt.excluded[col] for col in update_cols},

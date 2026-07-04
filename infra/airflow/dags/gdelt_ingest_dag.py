@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from airflow.decorators import dag, task
+from airflow.operators.bash import BashOperator
 
 sys.path.insert(0, "/opt/newsbuzz")  # repo mount; provides ingestion/ + common/
 
@@ -115,39 +116,16 @@ def gdelt_ingest():
         return workdir
 
     @task
-    def score(workdir: str) -> str:
-        """Compute buzz intensity for each validated event."""
-        from ingestion.config import IntensityConfig
-        from ingestion.load import event_to_row
-        from ingestion.scoring import intensity_score
+    def load(workdir: str) -> None:
+        """Upsert validated raw rows into Postgres, then emit run metrics."""
+        from common.db import get_engine
+        from ingestion.load import ensure_schema, event_to_row, upsert_events
 
         wd = Path(workdir)
         events = _read_events(wd / "valid.jsonl")
-        cfg = IntensityConfig()
-        now = datetime.now(UTC)
-        rows = [
-            event_to_row(
-                e, intensity_score(e.num_articles, e.num_sources, e.date_added, now, cfg)
-            )
-            for e in events
-        ]
-        for row in rows:
-            row["event_date"] = row["event_date"].isoformat()
-            row["date_added"] = row["date_added"].isoformat()
-        (wd / "scored.json").write_text(json.dumps(rows))
-        return workdir
-
-    @task
-    def load(workdir: str) -> None:
-        """Upsert scored rows into Postgres, then emit run metrics."""
-        from common.db import get_engine
-        from ingestion.load import ensure_schema, upsert_events
-
-        wd = Path(workdir)
-        rows = json.loads((wd / "scored.json").read_text())
         engine = get_engine()
         ensure_schema(engine)
-        loaded = upsert_events(engine, rows)
+        loaded = upsert_events(engine, [event_to_row(e) for e in events])
         metrics = {
             "cycle": wd.name,
             "rows_loaded": loaded,
@@ -157,7 +135,18 @@ def gdelt_ingest():
         print(f"metrics={json.dumps(metrics)}")
         shutil.rmtree(wd, ignore_errors=True)  # workdir is scratch, not an archive
 
-    load(score(validate(parse(fetch()))))
+    # Since Phase 7 scoring lives in dbt: staging -> cleaned -> scored,
+    # including dbt data tests (schema + intensity-range assertions).
+    transform = BashOperator(
+        task_id="transform",
+        bash_command=(
+            "dbt build --project-dir /opt/newsbuzz/dbt "
+            "--profiles-dir /opt/newsbuzz/dbt/profiles "
+            "--target-path /tmp/dbt-target --log-path /tmp/dbt-logs"
+        ),
+    )
+
+    load(validate(parse(fetch()))) >> transform
 
 
 gdelt_ingest()

@@ -1,19 +1,19 @@
-"""End-to-end ingestion run: fetch → parse → validate → score → load.
+"""End-to-end ingestion run: fetch → parse → validate → load (raw).
 
-Invoked by cron every 15 minutes (Phase 1); the same steps become Airflow
-tasks in Phase 4. Emits structured metrics per run: rows fetched, rows
-rejected (by reason), rows loaded, and duration.
+Invoked by cron every 15 minutes (Phase 1); the same steps run as Airflow
+tasks since Phase 4. Since Phase 7, scoring/geometry live in the dbt project
+(staging → cleaned → scored) — run `dbt build` after loading, which the cron
+wrapper and the Airflow DAG both do. Emits structured metrics per run: rows
+fetched, rows rejected (by reason), rows loaded, and duration.
 """
 
 import argparse
 import time
-from datetime import UTC, datetime
 
 import requests
 
 from common.db import get_engine
 from common.logging_config import get_logger
-from ingestion.config import IntensityConfig
 from ingestion.gdelt import (
     download_zipped_csv,
     fetch_last_update,
@@ -21,7 +21,6 @@ from ingestion.gdelt import (
     parse_gkg_titles,
 )
 from ingestion.load import ensure_schema, event_to_row, upsert_events
-from ingestion.scoring import intensity_score
 from ingestion.validate import validate_events
 
 logger = get_logger("ingestion.pipeline")
@@ -45,17 +44,7 @@ def run_once(database_url: str | None = None) -> dict:
         if event.source_url and event.source_url in titles:
             event.page_title = titles[event.source_url]
 
-    cfg = IntensityConfig()
-    now = datetime.now(UTC)
-    rows = [
-        event_to_row(
-            event,
-            intensity_score(
-                event.num_articles, event.num_sources, event.date_added, now, cfg
-            ),
-        )
-        for event in result.valid
-    ]
+    rows = [event_to_row(event) for event in result.valid]
 
     engine = get_engine(database_url)
     ensure_schema(engine)
