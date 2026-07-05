@@ -5,7 +5,7 @@ x-airflow-common: &airflow-common
   # (docker.io is unreachable from this host's docker daemon — see docs).
   # On hosts with working registry access, plain apache/airflow:2.10.4 is fine.
   image: ${AIRFLOW_IMAGE:-nbg/airflow:2.10.4}
-  pull_policy: never
+  pull_policy: ${PULL_POLICY:-missing}
   # Host networking: outbound HTTP from bridge-NAT'd containers is broken on
   # this dev host (inbound payloads dropped after handshake), and the DAG
   # must download GDELT exports. Works equally well on a single-VM deploy;
@@ -67,7 +67,7 @@ services:
   redis:
     # redis:7-alpine, imported locally and retagged (see airflow image note).
     image: ${REDIS_IMAGE:-nbg/redis:7-alpine}
-    pull_policy: never
+    pull_policy: ${PULL_POLICY:-missing}
     container_name: nbg-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"

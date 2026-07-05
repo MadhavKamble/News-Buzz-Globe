@@ -1,0 +1,12 @@
+# News Buzz Globe — serves the built frontend and proxies /api to FastAPI.
+# Port 80 (IP-only). When you attach a domain, replace `:80` with the domain
+# and Caddy will provision HTTPS automatically.
+:80 {
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	root * __APP_DIR__/frontend/dist
+	encode gzip
+	try_files {path} /index.html
+	file_server
+}
