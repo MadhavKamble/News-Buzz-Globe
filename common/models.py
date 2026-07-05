@@ -29,11 +29,19 @@ scored_metadata = MetaData()
 stories_metadata = MetaData()
 
 
-def _core_columns() -> list[Column]:
+def _core_columns(composite_pk: bool = False) -> list[Column]:
     return [
         Column("global_event_id", BigInteger, primary_key=True, autoincrement=False),
         Column("event_date", DateTime(timezone=True), nullable=False),
-        Column("date_added", DateTime(timezone=True), nullable=False, index=True),
+        # date_added joins the PK on the partitioned raw table (Postgres
+        # requires the partition key inside unique constraints).
+        Column(
+            "date_added",
+            DateTime(timezone=True),
+            primary_key=composite_pk,
+            nullable=False,
+            index=True,
+        ),
         Column("actor1_name", Text),
         Column("actor2_name", Text),
         Column("event_code", Text, nullable=False),
@@ -58,7 +66,9 @@ def _core_columns() -> list[Column]:
     ]
 
 
-raw_events = Table("raw_events", raw_metadata, *_core_columns())
+# DDL for this table lives in ingestion/partitions.py (monthly partitioning);
+# this Table object is for query/insert construction only.
+raw_events = Table("raw_events", raw_metadata, *_core_columns(composite_pk=True))
 
 # Phase 10: per-run pipeline metrics, persisted for "how does this behave at
 # scale" evidence (also emitted as structured logs since Phase 1).

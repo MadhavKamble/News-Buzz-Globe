@@ -1,5 +1,10 @@
 -- Cleaned/validated layer: declarative re-statement of the ingestion
 -- validation rules, plus defensive dedupe (last write wins by recency).
+--
+-- Materialized as a VIEW: only events_scored reads it (during dbt builds),
+-- so a table here would store every event a third time for no query-path
+-- benefit. The API reads the indexed events_scored table.
+{{ config(materialized='view') }}
 with deduped as (
     select
         *,
