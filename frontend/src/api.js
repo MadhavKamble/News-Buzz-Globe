@@ -51,3 +51,28 @@ export async function fetchStories(limit = 800) {
     ...f.properties,
   }));
 }
+
+// Demo JWT flow (no password) — issues a token for the RAG chat feature.
+export async function fetchChatToken(userId) {
+  const resp = await fetch(`${API_BASE}/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  return resp.json();
+}
+
+// Ask a natural-language question, answered from indexed news stories.
+export async function postChat(query, token) {
+  const resp = await fetch(`${API_BASE}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  return resp.json();
+}

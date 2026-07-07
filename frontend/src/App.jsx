@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Globe from 'react-globe.gl';
-import { fetchEvents, fetchStats, fetchStories, fetchThemes } from './api';
+import { fetchChatToken, fetchEvents, fetchStats, fetchStories, fetchThemes } from './api';
 import { clusterForZoom } from './clusterMarkers';
 import { intensityColor, toneColor } from './colors';
+import ChatPanel from './components/ChatPanel';
 import EventPopup from './components/EventPopup';
 import FilterPanel from './components/FilterPanel';
 import Legend from './components/Legend';
@@ -39,6 +40,8 @@ export default function App() {
     localStorage.getItem(TOUR_KEY) ? null : 0,
   );
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [showChat, setShowChat] = useState(false);
+  const [chatToken, setChatToken] = useState(null);
 
   // Theme filters only apply to raw events, and stories exist only for "now";
   // either condition switches the effective view to Events.
@@ -90,6 +93,13 @@ export default function App() {
     const timer = setInterval(loadStats, REFRESH_MS);
     return () => clearInterval(timer);
   }, [loadStats]);
+
+  // Silent demo-JWT fetch for the chat feature — no UI while this happens.
+  useEffect(() => {
+    fetchChatToken('guest')
+      .then((data) => setChatToken(data.access_token))
+      .catch(() => {});
+  }, []);
 
   // Fetch on slider/filter/view change (debounced); poll only while live.
   useEffect(() => {
@@ -273,6 +283,13 @@ export default function App() {
         <button className="icon-btn" onClick={resetView} title="Reset view and filters">
           ⟲
         </button>
+        <button
+          className="icon-btn"
+          onClick={() => setShowChat((v) => !v)}
+          title="Chat with the news"
+        >
+          💬
+        </button>
       </div>
       <div className="controls">
         <SearchBox events={events} onFlyTo={handleFlyTo} />
@@ -304,6 +321,7 @@ export default function App() {
       )}
       {error && <div className="error-toast">API unreachable: {error}</div>}
       <EventPopup event={selected} onClose={() => setSelected(null)} />
+      <ChatPanel open={showChat} token={chatToken} onClose={() => setShowChat(false)} />
       <TimeSlider offsetSteps={offsetSteps} onChange={setOffsetSteps} />
       <div className="bottom-left">
         <StatsBar stats={stats} />
