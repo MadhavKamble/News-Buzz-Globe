@@ -66,7 +66,7 @@ docker compose -f infra/docker-compose.yml up -d
 # 2. Python env
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-# 3. Lint + tests (101 pytest tests; needs the DB from step 1)
+# 3. Lint + tests (116 pytest tests; needs the DB from step 1)
 .venv/bin/ruff check . && .venv/bin/pytest
 
 # 4. One ingestion cycle + dbt transform + story clustering
@@ -75,6 +75,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m intelligence.job        # needs Ollama running locally
 
 # 5. Backend API (http://localhost:8000/docs)
+# Optional: cp .env.example .env and set JWT_SECRET before using /chat
 .venv/bin/uvicorn backend.app.main:app --port 8000
 
 # 6. Frontend (http://localhost:5173)
@@ -92,11 +93,11 @@ Scheduling: the `gdelt_ingest` Airflow DAG (fetch → parse → validate → loa
 |---|---|
 | `ingestion/` | GDELT fetch → parse → validate → load pipeline |
 | `dbt/` | Transform layer: staging → cleaned → scored models + 19 data tests |
-| `intelligence/` | Embedding clustering + Ollama summarization + trend |
-| `backend/` | FastAPI GeoJSON API (events, stories, themes, metrics) |
+| `intelligence/` | Embedding clustering + Ollama summarization + trend + RAG chat indexing (`rag.py`) |
+| `backend/` | FastAPI API: GeoJSON (events, stories, themes, metrics) + JWT-authenticated `/chat` |
 | `frontend/` | React + react-globe.gl app |
 | `infra/` | Docker Compose (Postgres/PostGIS, Redis, Airflow), cron |
-| `tests/` | 101 pytest tests (unit + API via TestClient) |
+| `tests/` | 116 pytest tests (unit + API via TestClient) |
 | `common/` | Shared models, DB helpers, structured logging |
 
 ## Notable engineering decisions
@@ -106,6 +107,8 @@ Scheduling: the `gdelt_ingest` Airflow DAG (fetch → parse → validate → loa
 - **Similarity ≠ generation.** Story deduplication is a math problem: local MiniLM embeddings + cosine threshold + union-find. The generative LLM (self-hosted Ollama, llama3.2-3B on CPU) is reserved for the one job that warrants it — writing readable one-line headlines for clusters — and the pipeline degrades gracefully to member titles if Ollama is down.
 - **$0/month hosting.** Everything runs on one Oracle Cloud Always Free VM (4 OCPU/24 GB Ampere) via Docker Compose: Postgres+PostGIS, Redis, FastAPI, Ollama, and the built frontend. CPU inference latency is a non-issue for ~25 summaries per 15-minute cycle. Fallback: Render (API) + Vercel/Netlify (frontend) + Neon (Postgres).
 - **Two-layer data quality.** Ingestion validates operationally (drop garbage coordinates, dedupe event IDs, per-reason rejection accounting in structured logs + a persisted `ingestion_runs` metrics table), and dbt re-expresses the same rules declaratively with 19 schema/data tests — so quality is both enforced at the gate and continuously verified in the warehouse.
+- **Auth scoped to one endpoint, not the whole API.** JWT + rate limiting were added only to `/chat` — the one route with real compute/LLM cost and abuse surface. `/events`/`/stories`/`/themes`/`/stats`/`/metrics/ingestion`/`/health` stay public and unauthenticated by design; gating free read-only data would add friction for no security benefit.
+- **RAG indexes story clusters, not raw events.** `events_scored` has no per-article summary field, only a page title — indexing the already-deduped, already-LLM-labeled `story_clusters` output instead gives real title *and* summary text per Chroma entry, with far fewer near-duplicate entries than indexing every raw event would.
 
 ## Known limitations
 
@@ -114,10 +117,11 @@ Scheduling: the `gdelt_ingest` Airflow DAG (fetch → parse → validate → loa
 - **Single-source tradeoff.** If GDELT hiccups (it occasionally does), the globe shows stale data until the next successful cycle; retries + idempotent backfill mitigate but can't eliminate this.
 - **Free-hosting constraints.** The always-free VM has finite headroom (embedding + LLM jobs are CPU-bound); Oracle signup requires a credit card and region capacity can be fickle. The fallback stack introduces cold starts (~30–60s on Render's free tier).
 - **Story clusters are computed for "now".** The time slider replays raw events historically, but clustered/labeled stories exist only for the latest run (by design — clustering 48h of history each cycle would waste the free tier's CPU budget).
+- **`/chat`'s auth is demo-grade, not production auth.** `POST /auth/token` issues a JWT for any `user_id` with no password — it demonstrates the JWT mechanics, not a real user system. The rate limit is therefore only as strong as the `user_id` string, which a client can trivially rotate.
 
 ## Testing
 
-- **pytest (101 tests):** intensity scoring, GDELT parsing incl. malformed rows, validation rules, clustering (union-find), summarization prompt/fallback, trend computation, cache-key coverage, and full API behavior via FastAPI `TestClient` against a disposable PostGIS database.
+- **pytest (116 tests):** intensity scoring, GDELT parsing incl. malformed rows, validation rules, clustering (union-find), summarization prompt/fallback, trend computation, cache-key coverage, RAG indexing/retrieval/graceful-degradation, JWT + rate-limit behavior, and full API behavior via FastAPI `TestClient` against a disposable PostGIS database.
 - **dbt (19 data tests):** unique/not-null on event IDs, accepted values on CAMEO root codes and QuadClass, intensity ∈ [0, 1].
 - **CI:** GitHub Actions runs ruff + pytest (with a PostGIS service container) and the frontend build on every push.
 

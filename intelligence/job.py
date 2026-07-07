@@ -140,6 +140,7 @@ def run_once(database_url: str | None = None, window_hours: int = WINDOW_HOURS) 
                 "title": rep.page_title,
                 "summary": summary,
                 "source_url": rep.source_url,
+                "country_code": rep.action_geo_country_code,
                 "date_added": max(m.date_added for m in members),
             }
         )

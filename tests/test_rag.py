@@ -50,13 +50,18 @@ class FakeCollection:
                 self.embeddings.append(embeddings[i])
                 self.metadatas.append(metadatas[i])
 
-    def query(self, query_embeddings, n_results):
+    def query(self, query_embeddings, n_results, where=None):
         q = np.array(query_embeddings[0])
-        sims = [float(np.dot(q, np.array(e))) for e in self.embeddings]
-        order = sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)[:n_results]
+        candidates = range(len(self.ids))
+        if where:
+            key, value = next(iter(where.items()))
+            candidates = [i for i in candidates if self.metadatas[i].get(key) == value]
+        scored = sorted(
+            candidates, key=lambda i: float(np.dot(q, np.array(self.embeddings[i]))), reverse=True
+        )[:n_results]
         return {
-            "ids": [[self.ids[i] for i in order]],
-            "metadatas": [[self.metadatas[i] for i in order]],
+            "ids": [[self.ids[i] for i in scored]],
+            "metadatas": [[self.metadatas[i] for i in scored]],
         }
 
 
@@ -70,15 +75,20 @@ def fake_collection(monkeypatch):
 
 ARTICLES = [
     {"id": 1, "title": "Mumbai floods worsen", "summary": "Red alert issued",
-     "source_url": "https://a.example/1", "date_added": "2026-07-04T12:00:00+00:00"},
+     "source_url": "https://a.example/1", "country_code": "IN",
+     "date_added": "2026-07-04T12:00:00+00:00"},
     {"id": 2, "title": "EU summit reaches trade deal", "summary": "Leaders agree on tariffs",
-     "source_url": "https://a.example/2", "date_added": "2026-07-04T12:00:00+00:00"},
+     "source_url": "https://a.example/2", "country_code": "BE",
+     "date_added": "2026-07-04T12:00:00+00:00"},
     {"id": 3, "title": "Tokyo stock market rallies", "summary": "Nikkei hits record high",
-     "source_url": "https://a.example/3", "date_added": "2026-07-04T12:00:00+00:00"},
+     "source_url": "https://a.example/3", "country_code": "JA",
+     "date_added": "2026-07-04T12:00:00+00:00"},
     {"id": 4, "title": "Wildfire spreads near Athens", "summary": "Evacuations ordered",
-     "source_url": "https://a.example/4", "date_added": "2026-07-04T12:00:00+00:00"},
+     "source_url": "https://a.example/4", "country_code": "GR",
+     "date_added": "2026-07-04T12:00:00+00:00"},
     {"id": 5, "title": "Cricket World Cup final set", "summary": "India to face Australia",
-     "source_url": "https://a.example/5", "date_added": "2026-07-04T12:00:00+00:00"},
+     "source_url": "https://a.example/5", "country_code": "IN",
+     "date_added": "2026-07-04T12:00:00+00:00"},
 ]
 
 
@@ -118,6 +128,29 @@ class TestAnswer:
         assert result["answer"] == "Mumbai is experiencing severe flooding."
         assert len(result["sources"]) > 0
         assert "error" not in result
+
+
+class TestCountryFilter:
+    def test_retrieve_scopes_to_country(self, fake_collection):
+        rag.index_articles(ARTICLES)
+        results = rag.retrieve("India cricket news", top_k=10, country_code="IN")
+        assert results
+        assert all(r["country_code"] == "IN" for r in results)
+
+    def test_answer_detects_country_and_scopes_retrieval(self, fake_collection):
+        rag.index_articles(ARTICLES)
+        result = rag.answer("What is happening in India?", session=FakeOllamaSession())
+        assert all(s["title"] in ("Mumbai floods worsen", "Cricket World Cup final set")
+                    for s in result["sources"])
+
+    def test_falls_back_to_unscoped_when_country_has_no_matches(self, fake_collection):
+        rag.index_articles(ARTICLES)
+        # Zimbabwe is a real detectable country name but no fixture article
+        # is tagged for it — the scoped search comes up empty, so answer()
+        # should fall back to an unscoped search rather than returning no
+        # sources at all.
+        result = rag.answer("What is happening in Zimbabwe?", session=FakeOllamaSession())
+        assert len(result["sources"]) > 0
 
 
 class TestGracefulDegradation:
