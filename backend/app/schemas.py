@@ -120,3 +120,12 @@ class ChatResponse(BaseModel):
     answer: str | None
     sources: list[ChatSource]
     cached: bool = False
+
+
+class TokenRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=100)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

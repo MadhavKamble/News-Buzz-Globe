@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "redis>=5.0",
     "chromadb>=0.5",
+    "python-jose[cryptography]>=3.3",
     "sentence-transformers>=3.0",
 ]
 

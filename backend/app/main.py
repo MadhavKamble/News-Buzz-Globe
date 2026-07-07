@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import Engine
 
+from backend.app.auth import check_rate_limit, generate_token, get_current_user
 from backend.app.cache import EventsCache, chat_cache_key, events_cache_key
 from backend.app.queries import fetch_events, fetch_stories
 from backend.app.schemas import (
@@ -16,6 +17,8 @@ from backend.app.schemas import (
     ChatResponse,
     FeatureCollection,
     StoryCollection,
+    TokenRequest,
+    TokenResponse,
 )
 from common.cameo import CAMEO_THEMES, codes_for_themes
 from common.db import get_engine
@@ -32,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # public data; no credentials involved
-    allow_methods=["GET", "POST"],  # POST needed for /chat
+    allow_methods=["GET", "POST"],  # POST needed for /chat and /auth/token
     allow_headers=["*"],
 )
 
@@ -205,13 +208,22 @@ def get_events(
     return result
 
 
+@app.post("/auth/token", response_model=TokenResponse)
+def issue_token(body: TokenRequest) -> TokenResponse:
+    """Demo JWT issuance: no password, just proves the JWT flow end-to-end."""
+    return TokenResponse(access_token=generate_token(body.user_id))
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(
     body: ChatRequest,
+    user_id: str = Depends(get_current_user),
     cache: EventsCache = Depends(cache_dep),
 ) -> ChatResponse:
     """Ask a natural-language question, answered from indexed news stories."""
     from intelligence import rag
+
+    check_rate_limit(user_id, cache.get_client())
 
     key = chat_cache_key(body.query)
     cached = cache.get_json(key)

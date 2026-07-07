@@ -76,6 +76,11 @@ class EventsCache:
             )
         return self._client
 
+    def get_client(self):
+        """Expose the underlying Redis client for callers needing raw ops
+        beyond get/set (e.g. the /chat rate limiter's INCR/EXPIRE)."""
+        return self._redis()
+
     def _warn_once(self, exc: Exception) -> None:
         if not self._warned:
             logger.warning(

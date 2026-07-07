@@ -134,9 +134,13 @@ Every clustering cycle (`intelligence/job.py`, every 15 minutes) writes deduplic
 ### `/chat` endpoint
 
 ```
-POST /chat                {query} -> {answer, sources: [{title, source_url, date_added}], cached}
+POST /auth/token          {user_id}              -> {access_token, token_type}   (no password — demo JWT flow)
+POST /chat                Authorization: Bearer <token>
+                           {query}                -> {answer, sources: [{title, source_url, date_added}], cached}
 ```
 
+- **Auth:** `/chat` is the only endpoint that requires a JWT (HS256, 24h expiry, `JWT_SECRET` env var). Every other endpoint (`/events`, `/stories`, `/themes`, `/stats`, `/health`) stays public and unauthenticated.
+- **Rate limiting:** 10 requests/minute per `user_id` (from the JWT), enforced via a Redis counter keyed `ratelimit:{user_id}:{minute}`. Exceeding it returns `429 {"error": "rate limit exceeded", "retry_after": <seconds>}`. If Redis is down, rate limiting fails open rather than blocking `/chat`.
 - **Caching:** answers are cached in Redis for 300s, keyed by a SHA-256 hash of the query (same pattern as the `/events` cache).
 
 ### Architecture
@@ -153,7 +157,7 @@ intelligence/rag.py
    ├─ retrieve(query)   ◀─cosine search────┘
    └─ answer(query)     ──grounded prompt──▶  Ollama (llama3.2)  ──▶  {answer, sources}
         ▲
-        │  POST /chat  (Redis cache)
+        │  POST /chat  (JWT + rate limit + Redis cache)
         │
    FastAPI (backend/app/main.py)
 ```
