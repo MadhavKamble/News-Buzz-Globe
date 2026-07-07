@@ -22,6 +22,14 @@ logger = get_logger("backend.cache")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CACHE_TTL_SECONDS = int(os.environ.get("EVENTS_CACHE_TTL", "120"))
 KEY_PREFIX = "nbg:events:"
+CHAT_KEY_PREFIX = "nbg:chat:"
+CHAT_CACHE_TTL_SECONDS = int(os.environ.get("CHAT_CACHE_TTL", "300"))
+
+
+def chat_cache_key(query: str) -> str:
+    """Deterministic key for a /chat query, same hashing pattern as events."""
+    digest = hashlib.sha256(query.strip().encode()).hexdigest()
+    return CHAT_KEY_PREFIX + digest
 
 
 def events_cache_key(

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class BoundingBox(BaseModel):
@@ -104,3 +104,19 @@ class StoryFeature(BaseModel):
 class StoryCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[StoryFeature]
+
+
+class ChatRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+
+
+class ChatSource(BaseModel):
+    title: str | None
+    source_url: str | None
+    date_added: str | None
+
+
+class ChatResponse(BaseModel):
+    answer: str | None
+    sources: list[ChatSource]
+    cached: bool = False

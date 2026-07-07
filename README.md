@@ -120,3 +120,41 @@ Scheduling: the `gdelt_ingest` Airflow DAG (fetch → parse → validate → loa
 - **pytest (101 tests):** intensity scoring, GDELT parsing incl. malformed rows, validation rules, clustering (union-find), summarization prompt/fallback, trend computation, cache-key coverage, and full API behavior via FastAPI `TestClient` against a disposable PostGIS database.
 - **dbt (19 data tests):** unique/not-null on event IDs, accepted values on CAMEO root codes and QuadClass, intensity ∈ [0, 1].
 - **CI:** GitHub Actions runs ruff + pytest (with a PostGIS service container) and the frontend build on every push.
+
+## GenAI features
+
+### RAG pipeline: "chat with the news"
+
+Every clustering cycle (`intelligence/job.py`, every 15 minutes) writes deduplicated `story_clusters` rows as usual, then hands the same clusters to `intelligence/rag.py`:
+
+1. **Indexing** — for each cluster, the representative member's page title + the cluster's LLM-generated headline are embedded with the *same* sentence-transformers model (`all-MiniLM-L6-v2`, cached once per process via `intelligence.cluster.get_model()`) already used for story deduplication — no second model load. The vectors are upserted into a local **Chroma** collection (`news_articles`), keyed by a stable hash of the cluster's member event IDs, so an ongoing story reappearing in a later run updates its entry instead of duplicating it. Chroma persists to `CHROMA_PATH` (default `./data/chroma`) on disk. Indexing failures are logged and swallowed — they never break the clustering job.
+2. **Retrieval** — a query is embedded with the same model and matched against the Chroma collection by cosine similarity, returning the top-k most relevant stories with their metadata (title, summary, source URL, date).
+3. **Generation** — the retrieved stories are assembled into a grounding prompt and sent to the same self-hosted **Ollama** (`llama3.2`) used for headline generation, instructed to answer only from that context. If Chroma or Ollama is unavailable, the pipeline degrades gracefully (`{answer: None, sources: [], error: "..."}`) rather than raising.
+
+### `/chat` endpoint
+
+```
+POST /chat                {query} -> {answer, sources: [{title, source_url, date_added}], cached}
+```
+
+- **Caching:** answers are cached in Redis for 300s, keyed by a SHA-256 hash of the query (same pattern as the `/events` cache).
+
+### Architecture
+
+```
+Airflow / cron (every 15 min)
+        │
+        ▼
+intelligence/job.py  ──cluster + summarize──▶  story_clusters (Postgres)
+        │
+        ▼
+intelligence/rag.py
+   ├─ index_articles()  ──embed (MiniLM)──▶  Chroma (news_articles, ./data/chroma)
+   ├─ retrieve(query)   ◀─cosine search────┘
+   └─ answer(query)     ──grounded prompt──▶  Ollama (llama3.2)  ──▶  {answer, sources}
+        ▲
+        │  POST /chat  (Redis cache)
+        │
+   FastAPI (backend/app/main.py)
+```
+

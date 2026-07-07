@@ -14,6 +14,7 @@ where coverage is strongest, not in the middle of the ocean.
 """
 
 import argparse
+import hashlib
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -114,6 +115,7 @@ def run_once(database_url: str | None = None, window_hours: int = WINDOW_HOURS) 
     clusters = cluster_embeddings(embeddings, SIMILARITY_THRESHOLD)
 
     cluster_rows = []
+    rag_articles = []
     llm_used = 0
     for indices in clusters:
         members = [rows[i] for i in indices]
@@ -123,9 +125,24 @@ def run_once(database_url: str | None = None, window_hours: int = WINDOW_HOURS) 
             summary = summarize_titles(titles)
             if summary:
                 llm_used += 1
+        rep = max(members, key=_member_weight)
         if not summary:
-            summary = max(members, key=_member_weight).page_title
+            summary = rep.page_title
         cluster_rows.append(build_cluster_row(members, run_at, summary))
+        # Stable id = hash of the member event ids, so the same ongoing story
+        # reappearing in a later run upserts instead of duplicating in Chroma.
+        event_ids = sorted(m.global_event_id for m in members)
+        rag_articles.append(
+            {
+                "id": hashlib.sha1(
+                    ",".join(map(str, event_ids)).encode()
+                ).hexdigest(),
+                "title": rep.page_title,
+                "summary": summary,
+                "source_url": rep.source_url,
+                "date_added": max(m.date_added for m in members),
+            }
+        )
 
     with engine.begin() as conn:
         conn.execute(
@@ -134,6 +151,13 @@ def run_once(database_url: str | None = None, window_hours: int = WINDOW_HOURS) 
             )
         )
         conn.execute(story_clusters.insert(), cluster_rows)
+
+    try:
+        from intelligence import rag
+
+        rag.index_articles(rag_articles)
+    except Exception:
+        logger.warning("rag indexing failed; continuing", exc_info=True)
 
     metrics = {
         "events": len(rows),

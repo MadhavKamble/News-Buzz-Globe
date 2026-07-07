@@ -8,9 +8,15 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import Engine
 
-from backend.app.cache import EventsCache, events_cache_key
+from backend.app.cache import EventsCache, chat_cache_key, events_cache_key
 from backend.app.queries import fetch_events, fetch_stories
-from backend.app.schemas import BoundingBox, FeatureCollection, StoryCollection
+from backend.app.schemas import (
+    BoundingBox,
+    ChatRequest,
+    ChatResponse,
+    FeatureCollection,
+    StoryCollection,
+)
 from common.cameo import CAMEO_THEMES, codes_for_themes
 from common.db import get_engine
 from common.logging_config import get_logger
@@ -25,8 +31,8 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # public read-only data; no credentials involved
-    allow_methods=["GET"],
+    allow_origins=["*"],  # public data; no credentials involved
+    allow_methods=["GET", "POST"],  # POST needed for /chat
     allow_headers=["*"],
 )
 
@@ -197,3 +203,23 @@ def get_events(
     if response is not None:
         response.headers["X-Cache"] = "MISS"
     return result
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(
+    body: ChatRequest,
+    cache: EventsCache = Depends(cache_dep),
+) -> ChatResponse:
+    """Ask a natural-language question, answered from indexed news stories."""
+    from intelligence import rag
+
+    key = chat_cache_key(body.query)
+    cached = cache.get_json(key)
+    if cached is not None:
+        return ChatResponse.model_validate({**cached, "cached": True})
+
+    result = rag.answer(body.query)
+    payload = {"answer": result.get("answer"), "sources": result.get("sources") or []}
+    if payload["answer"] is not None:
+        cache.set_json(key, payload, ttl=300)
+    return ChatResponse.model_validate({**payload, "cached": False})

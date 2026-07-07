@@ -6,6 +6,8 @@ sentence-transformers and merge pairs above a cosine-similarity threshold
 using union-find (transitive closure). No LLM involved here by design.
 """
 
+from functools import lru_cache
+
 import numpy as np
 
 
@@ -48,11 +50,28 @@ def cluster_embeddings(embeddings: np.ndarray, threshold: float = 0.6) -> list[l
     return sorted(groups.values(), key=len, reverse=True)
 
 
-def embed_titles(titles: list[str], model_name: str = "all-MiniLM-L6-v2") -> np.ndarray:
-    """Encode titles into L2-normalized embeddings (lazy heavy import)."""
+DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
+
+
+@lru_cache(maxsize=1)
+def get_model(model_name: str = DEFAULT_MODEL_NAME):
+    """Load the sentence-transformers model once per process (lazy heavy import).
+
+    Shared by embed_titles() and intelligence.rag, which both need the same
+    embedding space — loading it twice per pipeline cycle would double the
+    (CPU-bound) model load time for no benefit. Every caller must pass the
+    same argument shape (all callers use DEFAULT_MODEL_NAME explicitly) since
+    lru_cache keys on the literal call, not the resolved default — get_model()
+    and get_model(DEFAULT_MODEL_NAME) would otherwise cache as two entries.
+    """
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(model_name)
+    return SentenceTransformer(model_name)
+
+
+def embed_titles(titles: list[str], model_name: str = DEFAULT_MODEL_NAME) -> np.ndarray:
+    """Encode titles into L2-normalized embeddings, via the shared cached model."""
+    model = get_model(model_name)
     return model.encode(
         titles, normalize_embeddings=True, show_progress_bar=False, batch_size=64
     )
