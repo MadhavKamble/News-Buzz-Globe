@@ -63,6 +63,9 @@ log "Python environment (torch on ARM takes a few minutes)"
 python3 -m venv .venv
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -e .
+# dbt is a separate CLI, not a pyproject.toml dependency of the app package;
+# version pinned to match the one the Airflow image installs.
+.venv/bin/pip install -q dbt-postgres==1.10.2
 
 log "Waiting for Postgres"
 until sudo docker exec nbg-postgres pg_isready -U nbg -d newsbuzz >/dev/null 2>&1; do sleep 2; done
@@ -75,6 +78,12 @@ log "First data cycle (pipeline -> dbt -> stories)"
 log "Frontend build"
 cd frontend && npm ci --no-audit --no-fund && VITE_API_URL=/api npm run build && cd ..
 
+log "Environment file (random JWT secret, generated once and kept stable across re-runs)"
+if [ ! -f "$APP_DIR/.env" ]; then
+  cp .env.example .env
+  sed -i "s|JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
+fi
+
 log "systemd service for the API"
 sudo tee /etc/systemd/system/nbg-api.service >/dev/null <<UNIT
 [Unit]
@@ -84,6 +93,7 @@ After=network.target docker.service
 [Service]
 User=${USER}
 WorkingDirectory=${APP_DIR}
+EnvironmentFile=${APP_DIR}/.env
 ExecStart=${APP_DIR}/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
